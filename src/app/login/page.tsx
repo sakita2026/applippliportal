@@ -56,86 +56,88 @@ export default function LoginPage() {
         style={{
           position: 'fixed',
           inset: 0,
-          background: 'linear-gradient(160deg, #050510 0%, #0f0a2a 50%, #0a1628 100%)',
+          background: 'linear-gradient(160deg, #f8faff 0%, #eef2ff 50%, #e8f0fe 100%)',
           zIndex: 0,
         }}
       />
 
-      {/* 上カーテンパネル */}
+      {/* 左カーテンパネル */}
       <div
         style={{
           position: 'fixed',
           top: 0,
           left: 0,
-          right: 0,
-          height: '50%',
+          bottom: 0,
+          width: '50%',
           zIndex: 30,
-          background: 'linear-gradient(160deg, #050510 0%, #0f0a2a 50%, #0a1628 100%)',
-          transform: isOpening ? 'translateY(-100%)' : 'translateY(0)',
+          background: 'linear-gradient(160deg, #ffffff 0%, #f0f4ff 50%, #e8eeff 100%)',
+          transform: isOpening ? 'translateX(-100%)' : 'translateX(0)',
           transition: curtainTransition,
           overflow: 'hidden',
+          boxShadow: isOpening ? 'none' : '4px 0 24px rgba(99,102,241,0.08)',
         }}
       >
-        {/* 上パネル オーブ */}
+        {/* 左パネル オーブ */}
         <div
           style={{
             position: 'absolute',
-            top: '-40%',
-            left: '-10%',
-            width: '60%',
-            height: '200%',
-            background: 'radial-gradient(ellipse, rgba(99,102,241,0.18) 0%, transparent 70%)',
+            top: '-20%',
+            left: '-20%',
+            width: '80%',
+            height: '80%',
+            background: 'radial-gradient(ellipse, rgba(99,102,241,0.12) 0%, transparent 70%)',
             pointerEvents: 'none',
           }}
         />
         <div
           style={{
             position: 'absolute',
-            top: '10%',
-            right: '-5%',
-            width: '40%',
-            height: '180%',
-            background: 'radial-gradient(ellipse, rgba(139,92,246,0.12) 0%, transparent 70%)',
+            bottom: '-10%',
+            right: '-10%',
+            width: '60%',
+            height: '60%',
+            background: 'radial-gradient(ellipse, rgba(139,92,246,0.08) 0%, transparent 70%)',
             pointerEvents: 'none',
           }}
         />
       </div>
 
-      {/* 下カーテンパネル */}
+      {/* 右カーテンパネル */}
       <div
         style={{
           position: 'fixed',
-          bottom: 0,
-          left: 0,
+          top: 0,
           right: 0,
-          height: '50%',
+          bottom: 0,
+          width: '50%',
           zIndex: 30,
-          background: 'linear-gradient(160deg, #050510 0%, #0f0a2a 50%, #0a1628 100%)',
-          transform: isOpening ? 'translateY(100%)' : 'translateY(0)',
+          background: 'linear-gradient(200deg, #ffffff 0%, #f0f4ff 50%, #e8eeff 100%)',
+          transform: isOpening ? 'translateX(100%)' : 'translateX(0)',
           transition: curtainTransition,
           overflow: 'hidden',
+          boxShadow: isOpening ? 'none' : '-4px 0 24px rgba(99,102,241,0.08)',
         }}
       >
-        {/* 下パネル オーブ */}
+        {/* 右パネル オーブ */}
         <div
           style={{
             position: 'absolute',
-            bottom: '-40%',
-            right: '-10%',
-            width: '60%',
-            height: '200%',
-            background: 'radial-gradient(ellipse, rgba(99,102,241,0.15) 0%, transparent 70%)',
+            top: '-10%',
+            right: '-20%',
+            width: '80%',
+            height: '80%',
+            background: 'radial-gradient(ellipse, rgba(139,92,246,0.10) 0%, transparent 70%)',
             pointerEvents: 'none',
           }}
         />
         <div
           style={{
             position: 'absolute',
-            bottom: '10%',
-            left: '-5%',
-            width: '40%',
-            height: '180%',
-            background: 'radial-gradient(ellipse, rgba(139,92,246,0.10) 0%, transparent 70%)',
+            bottom: '-20%',
+            left: '-10%',
+            width: '60%',
+            height: '60%',
+            background: 'radial-gradient(ellipse, rgba(99,102,241,0.07) 0%, transparent 70%)',
             pointerEvents: 'none',
           }}
         />
@@ -162,11 +164,11 @@ export default function LoginPage() {
       >
         <div
           style={{
-            background: 'rgba(15, 12, 40, 0.85)',
-            backdropFilter: 'blur(20px)',
-            WebkitBackdropFilter: 'blur(20px)',
-            border: '1px solid rgba(99,102,241,0.2)',
-            boxShadow: '0 25px 60px rgba(0,0,0,0.5)',
+            background: 'rgba(255, 255, 255, 0.92)',
+            backdropFilter: 'blur(24px)',
+            WebkitBackdropFilter: 'blur(24px)',
+            border: '1px solid rgba(99,102,241,0.15)',
+            boxShadow: '0 25px 60px rgba(99,102,241,0.12), 0 8px 24px rgba(0,0,0,0.06)',
             borderRadius: '20px',
             padding: '40px 36px 32px',
           }}
@@ -182,11 +184,10 @@ export default function LoginPage() {
                 height: '72px',
                 borderRadius: '20px',
                 background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                boxShadow: '0 0 40px rgba(99,102,241,0.4)',
+                boxShadow: '0 0 40px rgba(99,102,241,0.35)',
                 marginBottom: '16px',
               }}
             >
-              {/* HeroiconsのBuildingOffice2アイコン */}
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
@@ -206,7 +207,7 @@ export default function LoginPage() {
               style={{
                 fontSize: '26px',
                 fontWeight: 700,
-                color: '#ffffff',
+                color: '#1e293b',
                 letterSpacing: '-0.02em',
                 margin: '0 0 4px',
               }}
@@ -216,7 +217,7 @@ export default function LoginPage() {
             <p
               style={{
                 fontSize: '13px',
-                color: 'rgba(148,163,184,0.8)',
+                color: 'rgba(100,116,139,0.8)',
                 margin: 0,
               }}
             >
@@ -233,8 +234,8 @@ export default function LoginPage() {
                 style={{
                   display: 'block',
                   fontSize: '12px',
-                  fontWeight: 500,
-                  color: 'rgba(148,163,184,0.9)',
+                  fontWeight: 600,
+                  color: 'rgba(71,85,105,0.9)',
                   marginBottom: '6px',
                   letterSpacing: '0.05em',
                   textTransform: 'uppercase',
@@ -254,7 +255,6 @@ export default function LoginPage() {
                     alignItems: 'center',
                   }}
                 >
-                  {/* UserCircleIcon */}
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
@@ -278,23 +278,25 @@ export default function LoginPage() {
                   onFocus={(e) => {
                     e.currentTarget.style.borderColor = 'rgba(99,102,241,0.5)'
                     e.currentTarget.style.outline = 'none'
+                    e.currentTarget.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.1)'
                   }}
                   onBlur={(e) => {
                     e.currentTarget.style.borderColor = 'rgba(99,102,241,0.2)'
+                    e.currentTarget.style.boxShadow = 'none'
                   }}
                   placeholder="admin"
                   autoComplete="username"
                   style={{
                     width: '100%',
                     padding: '11px 12px 11px 40px',
-                    background: 'rgba(99,102,241,0.08)',
+                    background: 'rgba(248,250,255,0.8)',
                     border: '1px solid rgba(99,102,241,0.2)',
                     borderRadius: '10px',
-                    color: '#e2e8f0',
+                    color: '#1e293b',
                     fontSize: '14px',
                     outline: 'none',
                     boxSizing: 'border-box',
-                    transition: 'border-color 200ms ease',
+                    transition: 'border-color 200ms ease, box-shadow 200ms ease',
                   }}
                 />
               </div>
@@ -307,8 +309,8 @@ export default function LoginPage() {
                 style={{
                   display: 'block',
                   fontSize: '12px',
-                  fontWeight: 500,
-                  color: 'rgba(148,163,184,0.9)',
+                  fontWeight: 600,
+                  color: 'rgba(71,85,105,0.9)',
                   marginBottom: '6px',
                   letterSpacing: '0.05em',
                   textTransform: 'uppercase',
@@ -328,7 +330,6 @@ export default function LoginPage() {
                     alignItems: 'center',
                   }}
                 >
-                  {/* KeyIcon */}
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
@@ -352,26 +353,27 @@ export default function LoginPage() {
                   onFocus={(e) => {
                     e.currentTarget.style.borderColor = 'rgba(99,102,241,0.5)'
                     e.currentTarget.style.outline = 'none'
+                    e.currentTarget.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.1)'
                   }}
                   onBlur={(e) => {
                     e.currentTarget.style.borderColor = 'rgba(99,102,241,0.2)'
+                    e.currentTarget.style.boxShadow = 'none'
                   }}
                   placeholder="••••••••"
                   autoComplete="current-password"
                   style={{
                     width: '100%',
                     padding: '11px 44px 11px 40px',
-                    background: 'rgba(99,102,241,0.08)',
+                    background: 'rgba(248,250,255,0.8)',
                     border: '1px solid rgba(99,102,241,0.2)',
                     borderRadius: '10px',
-                    color: '#e2e8f0',
+                    color: '#1e293b',
                     fontSize: '14px',
                     outline: 'none',
                     boxSizing: 'border-box',
-                    transition: 'border-color 200ms ease',
+                    transition: 'border-color 200ms ease, box-shadow 200ms ease',
                   }}
                 />
-                {/* パスワード表示/非表示トグル */}
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
@@ -386,12 +388,11 @@ export default function LoginPage() {
                     padding: '2px',
                     display: 'flex',
                     alignItems: 'center',
-                    color: 'rgba(148,163,184,0.6)',
+                    color: 'rgba(100,116,139,0.6)',
                   }}
                   aria-label={showPassword ? 'パスワードを隠す' : 'パスワードを表示'}
                 >
                   {showPassword ? (
-                    /* EyeSlashIcon */
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       fill="none"
@@ -407,7 +408,6 @@ export default function LoginPage() {
                       />
                     </svg>
                   ) : (
-                    /* EyeIcon */
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       fill="none"
@@ -438,10 +438,10 @@ export default function LoginPage() {
                 style={{
                   marginBottom: '16px',
                   padding: '10px 14px',
-                  background: 'rgba(239,68,68,0.12)',
+                  background: 'rgba(254,242,242,0.9)',
                   border: '1px solid rgba(239,68,68,0.3)',
                   borderRadius: '8px',
-                  color: '#fca5a5',
+                  color: '#dc2626',
                   fontSize: '13px',
                   display: 'flex',
                   alignItems: 'center',
@@ -490,27 +490,26 @@ export default function LoginPage() {
                   color: '#ffffff',
                   boxShadow:
                     phase === 'success'
-                      ? '0 4px 20px rgba(16,185,129,0.4)'
-                      : '0 4px 20px rgba(99,102,241,0.4)',
+                      ? '0 4px 20px rgba(16,185,129,0.35)'
+                      : '0 4px 20px rgba(99,102,241,0.35)',
                   transition: 'all 300ms ease',
                   letterSpacing: '0.01em',
                 }}
                 onMouseEnter={(e) => {
                   if (phase === 'idle') {
                     e.currentTarget.style.transform = 'translateY(-1px)'
-                    e.currentTarget.style.boxShadow = '0 8px 28px rgba(99,102,241,0.5)'
+                    e.currentTarget.style.boxShadow = '0 8px 28px rgba(99,102,241,0.45)'
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (phase === 'idle') {
                     e.currentTarget.style.transform = 'translateY(0)'
-                    e.currentTarget.style.boxShadow = '0 4px 20px rgba(99,102,241,0.4)'
+                    e.currentTarget.style.boxShadow = '0 4px 20px rgba(99,102,241,0.35)'
                   }
                 }}
               >
                 {phase === 'loading' && (
                   <>
-                    {/* スピナー */}
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       fill="none"
@@ -523,7 +522,6 @@ export default function LoginPage() {
                     >
                       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
                       <circle
-                        className="opacity-25"
                         cx="12"
                         cy="12"
                         r="10"
@@ -542,7 +540,6 @@ export default function LoginPage() {
                 )}
                 {phase === 'success' && (
                   <>
-                    {/* チェックマーク */}
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       fill="none"
@@ -561,13 +558,12 @@ export default function LoginPage() {
             )}
           </form>
 
-          {/* カード下部 */}
           <p
             style={{
               marginTop: '24px',
               textAlign: 'center',
               fontSize: '11px',
-              color: 'rgba(100,116,139,0.7)',
+              color: 'rgba(100,116,139,0.6)',
               margin: '24px 0 0',
             }}
           >

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Sidebar } from './Sidebar';
 import { useStore } from '@/lib/store';
 
@@ -36,6 +37,28 @@ function AppContent({ children }: { children: React.ReactNode }) {
       {state.error && <ErrorBanner message={state.error} />}
       {children}
     </>
+  );
+}
+
+function LogoutButton() {
+  const router = useRouter();
+
+  const handleLogout = () => {
+    document.cookie = 'workportal_auth=; path=/; max-age=0; SameSite=Lax';
+    router.push('/login');
+  };
+
+  return (
+    <button
+      onClick={handleLogout}
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors"
+      title="ログアウト"
+    >
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+      </svg>
+      <span className="hidden sm:inline">ログアウト</span>
+    </button>
   );
 }
 
@@ -79,6 +102,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <span className="font-bold text-sm bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
               WorkPortal
             </span>
+          </div>
+          <div className="ml-auto">
+            <LogoutButton />
           </div>
         </header>
 
