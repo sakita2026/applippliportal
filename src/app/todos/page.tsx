@@ -451,7 +451,7 @@ export default function TodosPage() {
   const filteredTodos = useMemo(() => {
     let todos = [...state.todos];
     if (filterView === 'mine') {
-      todos = todos.filter((t) => !t.userId || t.userId === currentUser?.username);
+      todos = todos.filter((t) => t.userId === currentUser?.username);
     } else {
       todos = todos.filter((t) => t.isShared);
     }
