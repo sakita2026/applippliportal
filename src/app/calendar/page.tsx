@@ -205,7 +205,14 @@ function MonthView({ currentDate, events, onDayClick, onEventClick }: {
                     className={`${COLOR_MAP[ev.color]} text-white text-xs px-1.5 py-0.5 rounded-md truncate cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-1`}
                   >
                     {ev.shareStatus === 'private' && <span className="opacity-70">🔒</span>}
-                    <span className="truncate">{ev.title}</span>
+                    <span className="truncate">
+                      {ev.title}
+                      {ev.startTime && (
+                        <span className="opacity-85 ml-1 font-normal">
+                          {ev.startTime}{ev.endTime ? `～${ev.endTime}` : ''}
+                        </span>
+                      )}
+                    </span>
                   </div>
                 ))}
                 {dayEvents.length > 3 && (
