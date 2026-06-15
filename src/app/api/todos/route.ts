@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+const STEPS_INCLUDE = { steps: { orderBy: { stepOrder: 'asc' as const } } };
+
 export async function GET() {
   try {
-    const todos = await prisma.todo.findMany({ orderBy: { createdAt: 'desc' } });
+    const todos = await prisma.todo.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: STEPS_INCLUDE,
+    });
     return NextResponse.json(todos);
   } catch {
     return NextResponse.json({ error: 'データの取得に失敗しました' }, { status: 500 });
@@ -19,6 +24,7 @@ export async function POST(req: NextRequest) {
     }
     const todo = await prisma.todo.create({
       data: { title, description: description ?? null, priority, status, dueDate: dueDate ?? null },
+      include: STEPS_INCLUDE,
     });
     return NextResponse.json(todo, { status: 201 });
   } catch {

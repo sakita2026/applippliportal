@@ -95,6 +95,15 @@ export type EventColor = 'indigo' | 'violet' | 'pink' | 'emerald' | 'amber' | 's
 export type CalendarView = 'day' | 'week' | 'month' | 'year';
 export type ShareStatus = 'shared' | 'private';
 
+export interface TodoStep {
+  id: string;
+  todoId: string;
+  title: string;
+  stepOrder: number;
+  done: boolean;
+  createdAt: string;
+}
+
 export interface Todo {
   id: string;
   title: string;
@@ -103,6 +112,7 @@ export interface Todo {
   status: TodoStatus;
   dueDate?: string;
   createdAt: string;
+  steps?: TodoStep[];
 }
 
 export interface CalendarEvent {

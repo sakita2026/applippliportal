@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+const STEPS_INCLUDE = { steps: { orderBy: { stepOrder: 'asc' as const } } };
+
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
@@ -9,6 +11,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const todo = await prisma.todo.update({
       where: { id },
       data: { title, description: description ?? null, priority, status, dueDate: dueDate ?? null },
+      include: STEPS_INCLUDE,
     });
     return NextResponse.json(todo);
   } catch {

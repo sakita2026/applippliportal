@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
-import type { Todo, CalendarEvent, Priority, TodoStatus, ShareStatus } from '@/types';
+import type { Todo, TodoStep, CalendarEvent, Priority, TodoStatus, ShareStatus } from '@/types';
 
 // State
 interface StoreState {
@@ -18,6 +18,9 @@ type Action =
   | { type: 'ADD_TODO'; payload: Todo }
   | { type: 'UPDATE_TODO'; payload: Todo }
   | { type: 'DELETE_TODO'; payload: string }
+  | { type: 'ADD_STEP'; payload: { todoId: string; step: TodoStep } }
+  | { type: 'UPDATE_STEP'; payload: { todoId: string; step: TodoStep } }
+  | { type: 'DELETE_STEP'; payload: { todoId: string; stepId: string } }
   | { type: 'ADD_EVENT'; payload: CalendarEvent }
   | { type: 'UPDATE_EVENT'; payload: CalendarEvent }
   | { type: 'DELETE_EVENT'; payload: string }
@@ -33,6 +36,33 @@ function reducer(state: StoreState, action: Action): StoreState {
       return { ...state, todos: state.todos.map((t) => t.id === action.payload.id ? action.payload : t) };
     case 'DELETE_TODO':
       return { ...state, todos: state.todos.filter((t) => t.id !== action.payload) };
+    case 'ADD_STEP':
+      return {
+        ...state,
+        todos: state.todos.map((t) =>
+          t.id === action.payload.todoId
+            ? { ...t, steps: [...(t.steps ?? []), action.payload.step].sort((a, b) => a.stepOrder - b.stepOrder) }
+            : t
+        ),
+      };
+    case 'UPDATE_STEP':
+      return {
+        ...state,
+        todos: state.todos.map((t) =>
+          t.id === action.payload.todoId
+            ? { ...t, steps: (t.steps ?? []).map((s) => s.id === action.payload.step.id ? action.payload.step : s) }
+            : t
+        ),
+      };
+    case 'DELETE_STEP':
+      return {
+        ...state,
+        todos: state.todos.map((t) =>
+          t.id === action.payload.todoId
+            ? { ...t, steps: (t.steps ?? []).filter((s) => s.id !== action.payload.stepId) }
+            : t
+        ),
+      };
     case 'ADD_EVENT': return { ...state, events: [...state.events, action.payload] };
     case 'UPDATE_EVENT':
       return { ...state, events: state.events.map((e) => e.id === action.payload.id ? action.payload : e) };
@@ -47,9 +77,12 @@ function reducer(state: StoreState, action: Action): StoreState {
 // Context
 interface StoreContextValue {
   state: StoreState;
-  addTodo: (todo: Omit<Todo, 'id' | 'createdAt'>) => Promise<void>;
+  addTodo: (todo: Omit<Todo, 'id' | 'createdAt' | 'steps'>) => Promise<Todo>;
   updateTodo: (todo: Todo) => Promise<void>;
   deleteTodo: (id: string) => Promise<void>;
+  addStep: (todoId: string, title: string, stepOrder: number) => Promise<TodoStep>;
+  updateStep: (todoId: string, step: TodoStep) => Promise<void>;
+  deleteStep: (todoId: string, stepId: string) => Promise<void>;
   addEvent: (event: Omit<CalendarEvent, 'id'>) => Promise<void>;
   updateEvent: (event: CalendarEvent) => Promise<void>;
   deleteEvent: (id: string) => Promise<void>;
@@ -65,7 +98,7 @@ async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error ?? 'APIエラーが発生しました');
+    throw new Error((err as { error?: string }).error ?? 'APIエラーが発生しました');
   }
   return res.json() as Promise<T>;
 }
@@ -78,7 +111,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     error: null,
   });
 
-  // Initial data fetch
   useEffect(() => {
     dispatch({ type: 'SET_LOADING', payload: true });
     Promise.all([
@@ -89,15 +121,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         dispatch({ type: 'SET_TODOS', payload: todos });
         dispatch({ type: 'SET_EVENTS', payload: events });
       })
-      .catch((err) => {
+      .catch((err: Error) => {
         dispatch({ type: 'SET_ERROR', payload: err.message });
         dispatch({ type: 'SET_LOADING', payload: false });
       });
   }, []);
 
-  const addTodo = useCallback(async (data: Omit<Todo, 'id' | 'createdAt'>) => {
+  const addTodo = useCallback(async (data: Omit<Todo, 'id' | 'createdAt' | 'steps'>) => {
     const todo = await apiFetch<Todo>('/api/todos', { method: 'POST', body: JSON.stringify(data) });
     dispatch({ type: 'ADD_TODO', payload: todo });
+    return todo;
   }, []);
 
   const updateTodo = useCallback(async (todo: Todo) => {
@@ -108,6 +141,28 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const deleteTodo = useCallback(async (id: string) => {
     await apiFetch(`/api/todos/${id}`, { method: 'DELETE' });
     dispatch({ type: 'DELETE_TODO', payload: id });
+  }, []);
+
+  const addStep = useCallback(async (todoId: string, title: string, stepOrder: number) => {
+    const step = await apiFetch<TodoStep>(`/api/todos/${todoId}/steps`, {
+      method: 'POST',
+      body: JSON.stringify({ title, stepOrder }),
+    });
+    dispatch({ type: 'ADD_STEP', payload: { todoId, step } });
+    return step;
+  }, []);
+
+  const updateStep = useCallback(async (todoId: string, step: TodoStep) => {
+    const updated = await apiFetch<TodoStep>(`/api/todos/${todoId}/steps/${step.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ title: step.title, done: step.done, stepOrder: step.stepOrder }),
+    });
+    dispatch({ type: 'UPDATE_STEP', payload: { todoId, step: updated } });
+  }, []);
+
+  const deleteStep = useCallback(async (todoId: string, stepId: string) => {
+    await apiFetch(`/api/todos/${todoId}/steps/${stepId}`, { method: 'DELETE' });
+    dispatch({ type: 'DELETE_STEP', payload: { todoId, stepId } });
   }, []);
 
   const addEvent = useCallback(async (data: Omit<CalendarEvent, 'id'>) => {
@@ -126,7 +181,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <StoreContext.Provider value={{ state, addTodo, updateTodo, deleteTodo, addEvent, updateEvent, deleteEvent }}>
+    <StoreContext.Provider value={{
+      state, addTodo, updateTodo, deleteTodo,
+      addStep, updateStep, deleteStep,
+      addEvent, updateEvent, deleteEvent,
+    }}>
       {children}
     </StoreContext.Provider>
   );
