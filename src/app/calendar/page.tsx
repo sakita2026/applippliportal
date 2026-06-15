@@ -6,11 +6,17 @@ import {
   eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths,
   addWeeks, subWeeks, addDays, subDays, addYears, subYears,
   startOfYear, endOfYear, eachMonthOfInterval,
-  getHours, setHours, setMinutes,
 } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { useStore, COLOR_MAP, SHARE_STATUS_LABELS } from '@/lib/store';
+import { useStore, COLOR_MAP } from '@/lib/store';
 import type { CalendarView, CalendarEvent, EventColor, ShareStatus } from '@/types';
+
+const HOUR_HEIGHT = 56; // px per 1 hour slot
+
+function timeToMinutes(time: string): number {
+  const [h, m] = time.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
 
 const EVENT_COLORS: { value: EventColor; label: string }[] = [
   { value: 'indigo', label: 'インディゴ' },
@@ -227,49 +233,77 @@ function WeekView({ currentDate, events, onSlotClick, onEventClick }: {
 
   return (
     <div className="flex-1 overflow-auto">
-      {/* Day headers */}
-      <div className="grid grid-cols-8 border-b sticky top-0 z-10" style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(8px)' }}>
-        <div className="py-2 text-xs text-slate-400 text-center">時刻</div>
+      {/* Sticky header */}
+      <div className="flex border-b sticky top-0 z-10" style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(8px)' }}>
+        <div className="w-14 flex-shrink-0 py-2 text-xs text-slate-400 text-center">時刻</div>
         {days.map((day, i) => {
           const isToday = isSameDay(day, today);
           return (
-            <div key={i} className={`py-2 text-center ${isToday ? 'text-indigo-500 font-bold' : 'text-slate-500 dark:text-slate-400'}`}>
+            <div key={i} className={`flex-1 py-2 text-center border-l ${isToday ? 'text-indigo-500 font-bold' : 'text-slate-500 dark:text-slate-400'}`}
+              style={{ borderColor: 'var(--border-color)' }}>
               <p className="text-xs">{WEEKDAYS_SHORT[day.getDay()]}</p>
               <p className={`text-base font-bold ${isToday ? 'text-indigo-500' : ''}`}>{format(day, 'd')}</p>
             </div>
           );
         })}
       </div>
-      {/* Time grid */}
-      <div>
-        {HOURS.map((hour) => (
-          <div key={hour} className="grid grid-cols-8 border-b" style={{ borderColor: 'var(--border-color)' }}>
-            <div className="py-2 px-2 text-xs text-slate-400 text-right pr-3 pt-1">{`${String(hour).padStart(2, '0')}:00`}</div>
-            {days.map((day, di) => {
-              const dateStr = format(day, 'yyyy-MM-dd');
-              const hourStr = `${String(hour).padStart(2, '0')}:00`;
-              const slotEvents = events.filter((e) => e.date === dateStr && e.startTime && parseInt(e.startTime) === hour);
-              return (
+
+      {/* Time grid body */}
+      <div className="flex" style={{ height: `${24 * HOUR_HEIGHT}px` }}>
+        {/* Hour labels */}
+        <div className="w-14 flex-shrink-0 relative border-r" style={{ borderColor: 'var(--border-color)' }}>
+          {HOURS.map((hour) => (
+            <div key={hour} style={{ position: 'absolute', top: hour * HOUR_HEIGHT, width: '100%', height: HOUR_HEIGHT }}>
+              <span className="text-xs text-slate-400" style={{ position: 'absolute', right: 6, top: -9 }}>
+                {String(hour).padStart(2, '0')}:00
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Day columns */}
+        {days.map((day, di) => {
+          const dateStr = format(day, 'yyyy-MM-dd');
+          const dayEvents = events.filter((e) => e.date === dateStr && e.startTime);
+          return (
+            <div key={di} className="flex-1 relative border-r" style={{ borderColor: 'var(--border-color)' }}>
+              {/* Hour lines / click targets */}
+              {HOURS.map((hour) => (
                 <div
-                  key={di}
-                  className="min-h-12 border-l p-0.5 cursor-pointer hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors"
-                  style={{ borderColor: 'var(--border-color)' }}
-                  onClick={() => onSlotClick(dateStr, hourStr)}
-                >
-                  {slotEvents.map((ev) => (
-                    <div
-                      key={ev.id}
-                      onClick={(e) => { e.stopPropagation(); onEventClick(ev); }}
-                      className={`${COLOR_MAP[ev.color]} text-white text-xs px-1 py-0.5 rounded truncate cursor-pointer hover:opacity-80`}
-                    >
-                      {ev.shareStatus === 'private' && '🔒 '}{ev.title}
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-          </div>
-        ))}
+                  key={hour}
+                  style={{ position: 'absolute', top: hour * HOUR_HEIGHT, width: '100%', height: HOUR_HEIGHT, borderBottom: '1px solid var(--border-color)' }}
+                  className="cursor-pointer hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors"
+                  onClick={() => onSlotClick(dateStr, `${String(hour).padStart(2, '0')}:00`)}
+                />
+              ))}
+
+              {/* Events */}
+              {dayEvents.map((ev) => {
+                const startMin = timeToMinutes(ev.startTime!);
+                const endMin = ev.endTime ? timeToMinutes(ev.endTime) : startMin + 60;
+                const top = (startMin / 60) * HOUR_HEIGHT;
+                const height = Math.max(((endMin - startMin) / 60) * HOUR_HEIGHT, 22);
+                return (
+                  <div
+                    key={ev.id}
+                    onClick={(e) => { e.stopPropagation(); onEventClick(ev); }}
+                    style={{ position: 'absolute', top: top + 1, left: 2, right: 2, height: height - 2, zIndex: 1 }}
+                    className={`${COLOR_MAP[ev.color]} text-white text-xs rounded-md px-1.5 py-0.5 cursor-pointer hover:opacity-80 overflow-hidden`}
+                  >
+                    <p className="font-semibold leading-tight truncate">
+                      {ev.shareStatus === 'private' ? '🔒 ' : ''}{ev.title}
+                    </p>
+                    {height >= 34 && (
+                      <p className="opacity-85 text-xs leading-tight">
+                        {ev.startTime}{ev.endTime ? ` ~ ${ev.endTime}` : ''}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -283,36 +317,63 @@ function DayView({ currentDate, events, onSlotClick, onEventClick }: {
   onEventClick: (e: CalendarEvent) => void;
 }) {
   const dateStr = format(currentDate, 'yyyy-MM-dd');
-  const dayEvents = events.filter((e) => e.date === dateStr);
+  const dayEvents = events.filter((e) => e.date === dateStr && e.startTime);
+  const DAY_HOUR_HEIGHT = 64;
 
   return (
     <div className="flex-1 overflow-auto">
-      <div className="max-w-lg mx-auto">
-        {HOURS.map((hour) => {
-          const hourStr = `${String(hour).padStart(2, '0')}:00`;
-          const slotEvents = dayEvents.filter((e) => e.startTime && parseInt(e.startTime) === hour);
-          return (
-            <div key={hour} className="flex gap-3 border-b py-2 px-4 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 cursor-pointer transition-colors"
-              style={{ borderColor: 'var(--border-color)' }}
-              onClick={() => onSlotClick(dateStr, hourStr)}
-            >
-              <span className="text-xs text-slate-400 w-12 pt-1 flex-shrink-0">{hourStr}</span>
-              <div className="flex-1 space-y-1">
-                {slotEvents.map((ev) => (
-                  <div
-                    key={ev.id}
-                    onClick={(e) => { e.stopPropagation(); onEventClick(ev); }}
-                    className={`${COLOR_MAP[ev.color]} text-white text-sm px-3 py-1.5 rounded-lg flex items-center gap-2 cursor-pointer hover:opacity-80`}
-                  >
-                    {ev.shareStatus === 'private' && <span>🔒</span>}
-                    <span>{ev.title}</span>
-                    {ev.startTime && <span className="opacity-80 text-xs ml-auto">{ev.startTime}{ev.endTime && ` - ${ev.endTime}`}</span>}
-                  </div>
-                ))}
+      <div className="max-w-2xl mx-auto px-4 py-2">
+        <div className="flex" style={{ height: `${24 * DAY_HOUR_HEIGHT}px` }}>
+          {/* Hour labels */}
+          <div className="w-16 flex-shrink-0 relative">
+            {HOURS.map((hour) => (
+              <div key={hour} style={{ position: 'absolute', top: hour * DAY_HOUR_HEIGHT, width: '100%', height: DAY_HOUR_HEIGHT }}>
+                <span className="text-xs text-slate-400" style={{ position: 'absolute', right: 8, top: -9 }}>
+                  {String(hour).padStart(2, '0')}:00
+                </span>
               </div>
-            </div>
-          );
-        })}
+            ))}
+          </div>
+
+          {/* Events column */}
+          <div className="flex-1 relative border-l" style={{ borderColor: 'var(--border-color)' }}>
+            {/* Hour lines / click targets */}
+            {HOURS.map((hour) => (
+              <div
+                key={hour}
+                style={{ position: 'absolute', top: hour * DAY_HOUR_HEIGHT, width: '100%', height: DAY_HOUR_HEIGHT, borderBottom: '1px solid var(--border-color)' }}
+                className="cursor-pointer hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors"
+                onClick={() => onSlotClick(dateStr, `${String(hour).padStart(2, '0')}:00`)}
+              />
+            ))}
+
+            {/* Events */}
+            {dayEvents.map((ev) => {
+              const startMin = timeToMinutes(ev.startTime!);
+              const endMin = ev.endTime ? timeToMinutes(ev.endTime) : startMin + 60;
+              const top = (startMin / 60) * DAY_HOUR_HEIGHT;
+              const height = Math.max(((endMin - startMin) / 60) * DAY_HOUR_HEIGHT, 28);
+              return (
+                <div
+                  key={ev.id}
+                  onClick={(e) => { e.stopPropagation(); onEventClick(ev); }}
+                  style={{ position: 'absolute', top: top + 1, left: 4, right: 4, height: height - 2, zIndex: 1 }}
+                  className={`${COLOR_MAP[ev.color]} text-white rounded-xl px-3 py-1.5 cursor-pointer hover:opacity-80 overflow-hidden flex flex-col justify-center`}
+                >
+                  <p className="font-semibold text-sm leading-tight truncate">
+                    {ev.shareStatus === 'private' ? '🔒 ' : ''}{ev.title}
+                  </p>
+                  <p className="opacity-85 text-xs leading-tight mt-0.5">
+                    {ev.startTime}{ev.endTime ? ` ~ ${ev.endTime}` : ''}
+                  </p>
+                  {ev.description && height >= 72 && (
+                    <p className="opacity-70 text-xs leading-tight mt-0.5 truncate">{ev.description}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );
