@@ -45,12 +45,24 @@ jobs:
           cp -r .next/static .next/standalone/.next/static
           cp -r public .next/standalone/public 2>/dev/null || true
           cd .next/standalone
-          zip -r ../../deploy.zip .
+          zip -r ../../deploy.zip . -x "*.map"
 
       - name: Azure Login
-        uses: azure/login@v1
+        uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Configure App Service settings
+        run: |
+          az webapp config appsettings set \
+            --name ${{ env.APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --settings \
+              SCM_DO_BUILD_DURING_DEPLOYMENT=false \
+              ENABLE_ORYX_BUILD=false \
+              WEBSITE_RUN_FROM_PACKAGE=0 \
+              NODE_ENV=production \
+              DATABASE_URL="${{ secrets.DATABASE_URL }}"
 
       - name: Set startup command
         run: |
@@ -59,17 +71,15 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --startup-file "node server.js"
 
-      - name: Deploy via Azure CLI
-        run: |
-          az webapp deploy \
-            --name ${{ env.APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --src-path deploy.zip \
-            --type zip \
-            --async false
+      - name: Deploy via webapps-deploy
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.APP_NAME }}
+          package: deploy.zip
 
-      - name: Restart app
+      - name: Restart and verify
         run: |
           az webapp restart \
             --name ${{ env.APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }}
+          echo "App URL: https://${{ env.APP_NAME }}.azurewebsites.net"
