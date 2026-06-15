@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { findUser } from '@/lib/users'
 
 type Phase = 'idle' | 'loading' | 'success' | 'opening'
 
@@ -28,9 +27,12 @@ export default function LoginPage() {
     setError('')
     setPhase('loading')
     await new Promise((r) => setTimeout(r, 800))
-    const user = findUser(username, password)
-    if (user) {
-      document.cookie = `workportal_auth=${user.username}; path=/; max-age=86400; SameSite=Lax`
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    })
+    if (res.ok) {
       setPhase('success')
       await new Promise((r) => setTimeout(r, 500))
       setPhase('opening')
