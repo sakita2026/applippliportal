@@ -30,11 +30,6 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      - name: Sync database schema
-        run: npx prisma db push --accept-data-loss
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-
       - name: Build Next.js
         run: npm run build
         env:
@@ -42,10 +37,15 @@ jobs:
 
       - name: Prepare deployment package
         run: |
+          # standalone ディレクトリに静的ファイルをコピー
           cp -r .next/static .next/standalone/.next/static
           cp -r public .next/standalone/public 2>/dev/null || true
+          # .env を除外（App Settingsで管理）
           cd .next/standalone
-          zip -r ../../deploy.zip . -x "*.map"
+          # シンボリックリンクを実体ファイルに変換してZIP作成
+          zip -r ../../deploy.zip . --symlinks -x "*.map" -x "*.d.ts"
+          echo "ZIP size: $(du -sh ../../deploy.zip | cut -f1)"
+          echo "Files in ZIP: $(unzip -l ../../deploy.zip | tail -1)"
 
       - name: Azure Login
         uses: azure/login@v2
@@ -62,6 +62,7 @@ jobs:
               ENABLE_ORYX_BUILD=false \
               WEBSITE_RUN_FROM_PACKAGE=0 \
               NODE_ENV=production \
+              PORT=8080 \
               DATABASE_URL="${{ secrets.DATABASE_URL }}"
 
       - name: Set startup command
@@ -69,7 +70,13 @@ jobs:
           az webapp config set \
             --name ${{ env.APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
-            --startup-file "node server.js"
+            --startup-file "node /home/site/wwwroot/server.js"
+
+      - name: Stop app before deploy
+        run: |
+          az webapp stop \
+            --name ${{ env.APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }}
 
       - name: Deploy via webapps-deploy
         uses: azure/webapps-deploy@v3
@@ -77,9 +84,29 @@ jobs:
           app-name: ${{ env.APP_NAME }}
           package: deploy.zip
 
-      - name: Restart and verify
+      - name: Verify node_modules via Kudu
         run: |
-          az webapp restart \
+          KUDU_URL="https://${{ env.APP_NAME }}.scm.azurewebsites.net"
+          PUBLISH_CREDS=$(az webapp deployment list-publishing-credentials \
+            --name ${{ env.APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            -o json)
+          USER=$(echo $PUBLISH_CREDS | jq -r '.publishingUserName')
+          PASS=$(echo $PUBLISH_CREDS | jq -r '.publishingPassword')
+          RESULT=$(curl -s -u "$USER:$PASS" "$KUDU_URL/api/vfs/site/wwwroot/node_modules/" | jq 'length')
+          echo "node_modules count: $RESULT"
+          if [ "$RESULT" -eq "0" ]; then
+            echo "WARNING: node_modules is empty!"
+            # node_modules をKuduコマンドで確認
+            curl -s -X POST -u "$USER:$PASS" \
+              -H "Content-Type: application/json" \
+              -d '{"command":"ls /home/site/wwwroot/node_modules", "dir":"/home"}' \
+              "$KUDU_URL/api/command"
+          fi
+
+      - name: Start app
+        run: |
+          az webapp start \
             --name ${{ env.APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }}
           echo "App URL: https://${{ env.APP_NAME }}.azurewebsites.net"
