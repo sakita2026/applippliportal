@@ -86,6 +86,7 @@ jobs:
           package: deploy.zip
 
       - name: Start app
+        if: always()
         run: |
           az webapp start \
             --name ${{ env.APP_NAME }} \
