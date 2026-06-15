@@ -3,7 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import { StoreProvider } from "@/lib/store";
-import { AppLayout } from "@/components/Layout/AppLayout";
+import { ConditionalAppLayout } from "@/components/Layout/ConditionalAppLayout";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,7 +34,7 @@ export default function RootLayout({
       <body className="h-full">
         <ThemeProvider>
           <StoreProvider>
-            <AppLayout>{children}</AppLayout>
+            <ConditionalAppLayout>{children}</ConditionalAppLayout>
           </StoreProvider>
         </ThemeProvider>
       </body>
