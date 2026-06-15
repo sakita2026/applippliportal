@@ -7,7 +7,7 @@ on:
 
 env:
   NODE_VERSION: '22.x'
-  APP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
+  APP_NAME: workportal-app-auqexf
   RESOURCE_GROUP: workportal-rg
 
 jobs:
@@ -39,7 +39,6 @@ jobs:
         run: npm run build
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          NEXT_PUBLIC_APP_URL: https://${{ secrets.AZURE_WEBAPP_NAME }}.azurewebsites.net
 
       - name: Prepare deployment package
         run: |
@@ -49,13 +48,28 @@ jobs:
           zip -r ../../deploy.zip .
 
       - name: Azure Login
-        uses: azure/login@v2
+        uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Deploy to Azure App Service
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ env.APP_NAME }}
-          package: deploy.zip
-          startup-command: 'node server.js'
+      - name: Set startup command
+        run: |
+          az webapp config set \
+            --name ${{ env.APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --startup-file "node server.js"
+
+      - name: Deploy via Azure CLI
+        run: |
+          az webapp deploy \
+            --name ${{ env.APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --src-path deploy.zip \
+            --type zip \
+            --async false
+
+      - name: Restart app
+        run: |
+          az webapp restart \
+            --name ${{ env.APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }}
