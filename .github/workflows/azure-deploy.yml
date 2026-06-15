@@ -6,8 +6,9 @@ on:
   workflow_dispatch:
 
 env:
-  NODE_VERSION: '20.x'
+  NODE_VERSION: '22.x'
   APP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
+  RESOURCE_GROUP: workportal-rg
 
 jobs:
   build-and-deploy:
@@ -40,14 +41,21 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           NEXT_PUBLIC_APP_URL: https://${{ secrets.AZURE_WEBAPP_NAME }}.azurewebsites.net
 
-      - name: Prepare standalone package
+      - name: Prepare deployment package
         run: |
           cp -r .next/static .next/standalone/.next/static
           cp -r public .next/standalone/public 2>/dev/null || true
+          cd .next/standalone
+          zip -r ../../deploy.zip .
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Deploy to Azure App Service
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.APP_NAME }}
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: .next/standalone
+          package: deploy.zip
+          startup-command: 'node server.js'
