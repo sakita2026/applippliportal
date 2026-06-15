@@ -7,10 +7,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params;
     const body = await req.json();
-    const { title, description, priority, status, dueDate } = body;
+    const { title, description, priority, status, dueDate, isShared } = body;
     const todo = await prisma.todo.update({
       where: { id },
-      data: { title, description: description ?? null, priority, status, dueDate: dueDate ?? null },
+      data: { title, description: description ?? null, priority, status, dueDate: dueDate ?? null, isShared: isShared ?? false },
       include: STEPS_INCLUDE,
     });
     return NextResponse.json(todo);

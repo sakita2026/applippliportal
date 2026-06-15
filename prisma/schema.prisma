@@ -9,11 +9,13 @@ datasource db {
 
 model Todo {
   id          String     @id @default(cuid())
+  userId      String?    @db.NVarChar(50)
   title       String     @db.NVarChar(500)
   description String?    @db.NVarChar(2000)
   priority    String     @db.NVarChar(10)
   status      String     @db.NVarChar(20)
   dueDate     String?    @db.NVarChar(10)
+  isShared    Boolean    @default(false)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   steps       TodoStep[]

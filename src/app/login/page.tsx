@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { findUser } from '@/lib/users'
 
 type Phase = 'idle' | 'loading' | 'success' | 'opening'
 
@@ -27,8 +28,9 @@ export default function LoginPage() {
     setError('')
     setPhase('loading')
     await new Promise((r) => setTimeout(r, 800))
-    if (username === 'admin' && password === 'admin') {
-      document.cookie = 'workportal_auth=1; path=/; max-age=86400; SameSite=Lax'
+    const user = findUser(username, password)
+    if (user) {
+      document.cookie = `workportal_auth=${user.username}; path=/; max-age=86400; SameSite=Lax`
       setPhase('success')
       await new Promise((r) => setTimeout(r, 500))
       setPhase('opening')

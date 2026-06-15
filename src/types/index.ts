@@ -106,11 +106,13 @@ export interface TodoStep {
 
 export interface Todo {
   id: string;
+  userId?: string;
   title: string;
   description?: string;
   priority: Priority;
   status: TodoStatus;
   dueDate?: string;
+  isShared?: boolean;
   createdAt: string;
   steps?: TodoStep[];
 }
