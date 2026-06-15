@@ -1,0 +1,33 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+model Todo {
+  id          String   @id @default(cuid())
+  title       String   @db.NVarChar(500)
+  description String?  @db.NVarChar(2000)
+  priority    String   @db.NVarChar(10)
+  status      String   @db.NVarChar(20)
+  dueDate     String?  @db.NVarChar(10)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CalendarEvent {
+  id          String   @id @default(cuid())
+  title       String   @db.NVarChar(500)
+  description String?  @db.NVarChar(2000)
+  date        String   @db.NVarChar(10)
+  startTime   String?  @db.NVarChar(5)
+  endTime     String?  @db.NVarChar(5)
+  shareStatus String   @db.NVarChar(10)
+  color       String   @db.NVarChar(20)
+  todoId      String?  @db.NVarChar(50)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
