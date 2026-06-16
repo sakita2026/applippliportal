@@ -175,6 +175,57 @@ DB 名:            workportaldb
 
 ---
 
+## Azure File Share（プロジェクト保管・バックアップ）
+
+プロジェクトのソースコードおよびデプロイバックアップは **Azure File Share** で管理しています。
+
+### 接続情報
+
+| 項目 | 値 |
+|---|---|
+| ストレージアカウント | `applippliportal` |
+| ファイル共有名 | `source` |
+| ホスト名 | `applippliportal.file.core.windows.net` |
+| ローカルマウント先 | `Z:\` |
+| プロジェクト保管パス | `Z:\applippliportal\` |
+| デプロイバックアップパス | `Z:\backups\deploy_YYYYMMDD_HHMMSS.zip` |
+
+### Z: ドライブのマウント方法（Windows）
+
+```powershell
+$connectTestResult = Test-NetConnection -ComputerName applippliportal.file.core.windows.net -Port 445
+if ($connectTestResult.TcpTestSucceeded) {
+    cmd.exe /C "cmdkey /add:`"applippliportal.file.core.windows.net`" /user:`"localhost\applippliportal`" /pass:`"<AZURE_STORAGE_KEY>`""
+    New-PSDrive -Name Z -PSProvider FileSystem -Root "\\applippliportal.file.core.windows.net\source" -Persist
+}
+```
+
+> ストレージアカウントキーは GitHub Secrets の `AZURE_STORAGE_KEY` に登録済み。
+
+### デプロイ時の自動バックアップ
+
+GitHub Actions でデプロイするたびに `deploy.zip` が Azure File Share へ自動保存されます。
+
+```
+Z:\backups\deploy_20260616_094432.zip   ← 各デプロイの ZIP
+Z:\applippliportal\                     ← ソースコード一式
+```
+
+ワークフロー内のバックアップステップ（`.github/workflows/azure-deploy.yml`）：
+```yaml
+- name: Backup deploy.zip to Azure File Share
+  run: |
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    az storage file upload \
+      --account-name applippliportal \
+      --account-key "${{ secrets.AZURE_STORAGE_KEY }}" \
+      --share-name source \
+      --source deploy.zip \
+      --path "backups/deploy_${TIMESTAMP}.zip"
+```
+
+---
+
 ## ローカル開発手順
 
 ```bash

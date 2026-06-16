@@ -72,6 +72,17 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --startup-file "node /home/site/wwwroot/server.js"
 
+      - name: Backup deploy.zip to Azure File Share
+        run: |
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          az storage file upload \
+            --account-name applippliportal \
+            --account-key "${{ secrets.AZURE_STORAGE_KEY }}" \
+            --share-name source \
+            --source deploy.zip \
+            --path "backups/deploy_${TIMESTAMP}.zip"
+          echo "Backed up to: backups/deploy_${TIMESTAMP}.zip"
+
       - name: Stop app before deploy
         continue-on-error: true
         run: |
