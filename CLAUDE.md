@@ -195,12 +195,13 @@ DB 名:            workportaldb
 ```powershell
 $connectTestResult = Test-NetConnection -ComputerName applippliportal.file.core.windows.net -Port 445
 if ($connectTestResult.TcpTestSucceeded) {
-    cmd.exe /C "cmdkey /add:`"applippliportal.file.core.windows.net`" /user:`"localhost\applippliportal`" /pass:`"<AZURE_STORAGE_KEY>`""
+    cmd.exe /C "cmdkey /add:`"applippliportal.file.core.windows.net`" /user:`"localhost\applippliportal`" /pass:`"<ストレージキー>`""
     New-PSDrive -Name Z -PSProvider FileSystem -Root "\\applippliportal.file.core.windows.net\source" -Persist
 }
 ```
 
-> ストレージアカウントキーは GitHub Secrets の `AZURE_STORAGE_KEY` に登録済み。
+> **ストレージキーの入手先：** `Z:\applippliportal\CLAUDE.md` に実際のキーが記載されています。
+> GitHub Secrets にも `AZURE_STORAGE_KEY` として登録済み（CI/CD で使用）。
 
 ### デプロイ時の自動バックアップ
 
