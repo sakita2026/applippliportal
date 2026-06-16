@@ -54,3 +54,9 @@ description: Use this agent when you need to write tests, verify implementations
   - エッジケース: ✅ / ❌
 - 発見した問題: （なし or 詳細）
 ```
+
+## 回答の末尾ルール
+
+回答の最後には必ず以下を付記すること：
+
+> 🧪 **テスターが検証しました**

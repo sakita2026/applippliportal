@@ -54,3 +54,9 @@ description: Use this agent when you need to coordinate development work — rec
   - [ ] 異常系: ...
   - [ ] エッジケース: ...
 ```
+
+## 回答の末尾ルール
+
+回答の最後には必ず以下を付記すること：
+
+> 🧑‍💼 **マネージャーが対応しました**
