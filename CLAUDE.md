@@ -227,31 +227,54 @@ Z:\applippliportal\                     ← ソースコード一式
 
 ---
 
-## ローカル開発手順
+## 開発環境のセットアップ（全PC共通）
 
-```bash
-# 1. 依存関係インストール
+**作業ディレクトリは `Z:\applippliportal` を直接使用します。ローカルにはコピーしません。**
+
+### 初回セットアップ（新しい PC）
+
+```powershell
+# 1. Z: ドライブをマウント（CLAUDE.md の「Azure File Share」セクション参照）
+
+# 2. Z:\applippliportal に移動
+cd Z:\applippliportal
+
+# 3. 依存関係インストール（node_modules が Z: に入る）
 npm install
 
-# 2. .env ファイル作成（.env.example を参考に）
-# DATABASE_URL=sqlserver://...
-
-# 3. Prisma クライアント生成
+# 4. Prisma クライアント生成
 npx prisma generate
 
-# 4. 開発サーバー起動
+# 5. 開発サーバー起動
+npm run dev
+# → http://localhost:3000
+```
+
+### 2回目以降
+
+```powershell
+# Z: をマウントして作業ディレクトリに移動するだけ
+cd Z:\applippliportal
 npm run dev
 ```
 
 ### DB スキーマ変更時
 
-```bash
-# ローカル DB に反映（本番 DB に直接適用）
+```powershell
+cd Z:\applippliportal
+
+# 本番 DB に直接適用
 npx prisma db push
 
 # ※ CI（GitHub Actions）では prisma db push を実行しない
-# ※ スキーマ変更は必ずローカルから手動適用
+# ※ スキーマ変更は必ずここから手動適用
 ```
+
+### 注意事項
+
+- `node_modules` と `.next` は Z: ドライブ上に置く（ローカルコピー不要）
+- 複数人が同時に `npm run dev` すると競合する可能性があるため、同時作業は避ける
+- コード変更後は必ず `git add / commit / push` して GitHub を最新に保つ
 
 ---
 
