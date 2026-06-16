@@ -4,6 +4,23 @@ WorkPortal のデプロイ・変更履歴。
 
 ---
 
+## [2026-06-16] 開発環境整備・エージェント強化
+
+### 追加
+- **Azure File Share 開発ワークフロー** — Z: ドライブをソースの共有場所に設定
+- **`dev.ps1`** — 開発サーバー起動スクリプト（node_modules をローカルに自動インストール）
+- **`setup.ps1`** — 新PC初回セットアップスクリプト（git・node_modules を自動設定）
+- **エージェント名乗り機能** — マネージャー/コーダー/テスターが回答末尾に担当者を表示
+- **CLAUDE.md デプロイルール** — ソース変更後に「デプロイしますか？」確認・CHANGELOG 更新を義務化
+- **TodoStep 期限日時フィールド** — `dueDate`・`dueTime` を Prisma スキーマに追加
+- **レイアウト・ストアのテスト追加** — `ConditionalAppLayout`・`Sidebar`・`store` のテスト
+
+### 変更
+- **CLAUDE.md** — Z: ドライブ運用・node_modules ローカル管理・機密情報を SECRETS.md に分離
+- **`.gitignore`** — `SECRETS.md` を除外対象に追加
+
+---
+
 ## [2026-06-16] マルチユーザー対応・バグ修正
 
 ### 追加
