@@ -5,13 +5,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const { sid } = await params;
     const body = await req.json();
-    const { title, done, stepOrder } = body;
+    const { title, done, stepOrder, dueDate, dueTime } = body;
     const step = await prisma.todoStep.update({
       where: { id: sid },
       data: {
         ...(title !== undefined && { title }),
         ...(done !== undefined && { done }),
         ...(stepOrder !== undefined && { stepOrder }),
+        ...(dueDate !== undefined && { dueDate }),
+        ...(dueTime !== undefined && { dueTime }),
       },
     });
     return NextResponse.json(step);

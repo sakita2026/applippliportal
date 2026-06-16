@@ -27,6 +27,8 @@ model TodoStep {
   title     String   @db.NVarChar(500)
   stepOrder Int      @default(0)
   done      Boolean  @default(false)
+  dueDate   String?  @db.NVarChar(10)
+  dueTime   String?  @db.NVarChar(5)
   createdAt DateTime @default(now())
   todo      Todo     @relation(fields: [todoId], references: [id], onDelete: Cascade)
 }

@@ -80,7 +80,7 @@ interface StoreContextValue {
   addTodo: (todo: Omit<Todo, 'id' | 'createdAt' | 'steps'>) => Promise<Todo>;
   updateTodo: (todo: Todo) => Promise<void>;
   deleteTodo: (id: string) => Promise<void>;
-  addStep: (todoId: string, title: string, stepOrder: number) => Promise<TodoStep>;
+  addStep: (todoId: string, title: string, stepOrder: number, dueDate?: string, dueTime?: string) => Promise<TodoStep>;
   updateStep: (todoId: string, step: TodoStep) => Promise<void>;
   deleteStep: (todoId: string, stepId: string) => Promise<void>;
   addEvent: (event: Omit<CalendarEvent, 'id'>) => Promise<void>;
@@ -143,10 +143,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'DELETE_TODO', payload: id });
   }, []);
 
-  const addStep = useCallback(async (todoId: string, title: string, stepOrder: number) => {
+  const addStep = useCallback(async (todoId: string, title: string, stepOrder: number, dueDate?: string, dueTime?: string) => {
     const step = await apiFetch<TodoStep>(`/api/todos/${todoId}/steps`, {
       method: 'POST',
-      body: JSON.stringify({ title, stepOrder }),
+      body: JSON.stringify({ title, stepOrder, dueDate, dueTime }),
     });
     dispatch({ type: 'ADD_STEP', payload: { todoId, step } });
     return step;
@@ -155,7 +155,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const updateStep = useCallback(async (todoId: string, step: TodoStep) => {
     const updated = await apiFetch<TodoStep>(`/api/todos/${todoId}/steps/${step.id}`, {
       method: 'PUT',
-      body: JSON.stringify({ title: step.title, done: step.done, stepOrder: step.stepOrder }),
+      body: JSON.stringify({ title: step.title, done: step.done, stepOrder: step.stepOrder, dueDate: step.dueDate, dueTime: step.dueTime }),
     });
     dispatch({ type: 'UPDATE_STEP', payload: { todoId, step: updated } });
   }, []);

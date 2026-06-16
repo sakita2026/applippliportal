@@ -31,6 +31,8 @@ type DraftStep = {
   title: string;
   done: boolean;
   stepOrder: number;
+  dueDate?: string;
+  dueTime?: string;
 };
 
 // ── Todo Form ────────────────────────────────────────────────────────────────
@@ -50,7 +52,7 @@ function TodoForm({
   const [dueDate, setDueDate] = useState(initial?.dueDate ?? '');
   const [isShared, setIsShared] = useState(initial?.isShared ?? false);
   const [steps, setSteps] = useState<DraftStep[]>(
-    (initial?.steps ?? []).map((s) => ({ id: s.id, title: s.title, done: s.done, stepOrder: s.stepOrder }))
+    (initial?.steps ?? []).map((s) => ({ id: s.id, title: s.title, done: s.done, stepOrder: s.stepOrder, dueDate: s.dueDate, dueTime: s.dueTime }))
   );
   const [saving, setSaving] = useState(false);
   const lastInputRef = useRef<HTMLInputElement>(null);
@@ -192,37 +194,56 @@ function TodoForm({
             <label className="text-xs text-slate-500 mb-2 block">工程</label>
             <div className="space-y-1.5">
               {steps.map((step, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  {/* ハンドル */}
-                  <span className="text-slate-300 dark:text-slate-600 flex-shrink-0 cursor-grab">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
-                    </svg>
-                  </span>
-                  {/* 番号 */}
-                  <span className="text-xs text-slate-400 w-5 text-right flex-shrink-0">{index + 1}.</span>
-                  {/* 入力 */}
-                  <input
-                    type="text"
-                    data-step-input
-                    ref={index === steps.length - 1 ? lastInputRef : undefined}
-                    value={step.title}
-                    onChange={(e) => updateStepTitle(index, e.target.value)}
-                    onKeyDown={(e) => handleStepKeyDown(e, index)}
-                    placeholder={`工程 ${index + 1}`}
-                    className="flex-1 px-2.5 py-1.5 rounded-lg border text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                    style={{ borderColor: 'var(--border-color)' }}
-                  />
-                  {/* 削除 */}
-                  <button
-                    type="button"
-                    onClick={() => removeStep(index)}
-                    className="p-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-900/20 text-slate-300 hover:text-rose-400 transition-colors flex-shrink-0"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
+                <div key={index} className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    {/* ハンドル */}
+                    <span className="text-slate-300 dark:text-slate-600 flex-shrink-0 cursor-grab">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
+                      </svg>
+                    </span>
+                    {/* 番号 */}
+                    <span className="text-xs text-slate-400 w-5 text-right flex-shrink-0">{index + 1}.</span>
+                    {/* 入力 */}
+                    <input
+                      type="text"
+                      data-step-input
+                      ref={index === steps.length - 1 ? lastInputRef : undefined}
+                      value={step.title}
+                      onChange={(e) => updateStepTitle(index, e.target.value)}
+                      onKeyDown={(e) => handleStepKeyDown(e, index)}
+                      placeholder={`工程 ${index + 1}`}
+                      className="flex-1 px-2.5 py-1.5 rounded-lg border text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      style={{ borderColor: 'var(--border-color)' }}
+                    />
+                    {/* 削除 */}
+                    <button
+                      type="button"
+                      onClick={() => removeStep(index)}
+                      className="p-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-900/20 text-slate-300 hover:text-rose-400 transition-colors flex-shrink-0"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  {/* 日付・時間入力 */}
+                  <div className="flex items-center gap-2 pl-7">
+                    <input
+                      type="date"
+                      value={step.dueDate ?? ''}
+                      onChange={(e) => setSteps((prev) => prev.map((s, i) => i === index ? { ...s, dueDate: e.target.value || undefined } : s))}
+                      className="flex-1 px-2 py-1 rounded-lg border text-xs bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                      style={{ borderColor: 'var(--border-color)' }}
+                    />
+                    <input
+                      type="time"
+                      value={step.dueTime ?? ''}
+                      onChange={(e) => setSteps((prev) => prev.map((s, i) => i === index ? { ...s, dueTime: e.target.value || undefined } : s))}
+                      className="w-28 px-2 py-1 rounded-lg border text-xs bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                      style={{ borderColor: 'var(--border-color)' }}
+                    />
+                  </div>
                 </div>
               ))}
               <button
@@ -420,11 +441,22 @@ function TodoItem({ todo, onEdit, onDelete, onToggle, currentUsername }: {
         <div className="px-4 pb-3 space-y-1 border-t" style={{ borderColor: 'var(--border-color)' }}>
           <div className="pt-2.5 space-y-1.5">
             {steps.map((step) => (
-              <div key={step.id} className="flex items-center gap-2">
+              <div key={step.id} className="flex items-start gap-2">
                 <StepCheckbox todoId={todo.id} step={step} />
-                <span className={`text-xs flex-1 ${step.done ? 'line-through text-slate-400' : 'text-slate-600 dark:text-slate-300'}`}>
-                  {step.title}
-                </span>
+                <div className="flex-1 min-w-0">
+                  <span className={`text-xs ${step.done ? 'line-through text-slate-400' : 'text-slate-600 dark:text-slate-300'}`}>
+                    {step.title}
+                  </span>
+                  {(step.dueDate || step.dueTime) && (
+                    <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1">
+                      <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      {step.dueDate && format(new Date(step.dueDate + 'T00:00:00'), 'M月d日', { locale: ja })}
+                      {step.dueTime && ` ${step.dueTime}`}
+                    </p>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -496,8 +528,8 @@ export default function TodosPage() {
       for (const draft of draftSteps) {
         if (draft.id) {
           const orig = originalSteps.find((s) => s.id === draft.id);
-          if (orig && (orig.title !== draft.title || orig.done !== draft.done || orig.stepOrder !== draft.stepOrder)) {
-            await updateStep(editTodo.id, { ...orig, title: draft.title, done: draft.done, stepOrder: draft.stepOrder }).catch(() => null);
+          if (orig && (orig.title !== draft.title || orig.done !== draft.done || orig.stepOrder !== draft.stepOrder || orig.dueDate !== draft.dueDate || orig.dueTime !== draft.dueTime)) {
+            await updateStep(editTodo.id, { ...orig, title: draft.title, done: draft.done, stepOrder: draft.stepOrder, dueDate: draft.dueDate, dueTime: draft.dueTime }).catch(() => null);
           }
         } else {
           await addStep(editTodo.id, draft.title, draft.stepOrder).catch(() => null);
@@ -508,7 +540,7 @@ export default function TodosPage() {
       const newTodo = await addTodo(data);
       for (const draft of draftSteps) {
         if (draft.title.trim()) {
-          await addStep(newTodo.id, draft.title, draft.stepOrder).catch(() => null);
+          await addStep(newTodo.id, draft.title, draft.stepOrder, draft.dueDate, draft.dueTime).catch(() => null);
         }
       }
     }

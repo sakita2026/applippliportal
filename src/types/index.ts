@@ -101,6 +101,8 @@ export interface TodoStep {
   title: string;
   stepOrder: number;
   done: boolean;
+  dueDate?: string;
+  dueTime?: string;
   createdAt: string;
 }
 

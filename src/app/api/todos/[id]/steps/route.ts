@@ -5,12 +5,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const { id: todoId } = await params;
     const body = await req.json();
-    const { title, stepOrder } = body;
+    const { title, stepOrder, dueDate, dueTime } = body;
     if (!title) {
       return NextResponse.json({ error: '工程名は必須です' }, { status: 400 });
     }
     const step = await prisma.todoStep.create({
-      data: { todoId, title, stepOrder: stepOrder ?? 0, done: false },
+      data: { todoId, title, stepOrder: stepOrder ?? 0, done: false, dueDate: dueDate ?? null, dueTime: dueTime ?? null },
     });
     return NextResponse.json(step, { status: 201 });
   } catch {
