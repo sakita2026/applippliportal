@@ -24,5 +24,5 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   // /api/auth/callback と静的アセットは除外
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)'],
 }
