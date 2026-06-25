@@ -8,7 +8,7 @@ datasource db {
 }
 
 model CalendarEvent {
-  id          String   @id @default(cuid())
+  id          String   @id
   title       String   @db.NVarChar(500)
   description String?  @db.NVarChar(2000)
   date        String   @db.NVarChar(10)
@@ -18,7 +18,33 @@ model CalendarEvent {
   color       String   @db.NVarChar(20)
   todoId      String?  @db.NVarChar(50)
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  updatedAt   DateTime
+}
+
+model Todo {
+  id          String     @id
+  title       String     @db.NVarChar(500)
+  description String?    @db.NVarChar(2000)
+  priority    String     @db.NVarChar(10)
+  status      String     @db.NVarChar(20)
+  dueDate     String?    @db.NVarChar(10)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime
+  isShared    Boolean    @default(false)
+  userId      String?    @db.NVarChar(50)
+  TodoStep    TodoStep[]
+}
+
+model TodoStep {
+  id        String   @id
+  todoId    String
+  title     String   @db.NVarChar(500)
+  stepOrder Int      @default(0)
+  done      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  dueDate   String?  @db.NVarChar(10)
+  dueTime   String?  @db.NVarChar(5)
+  Todo      Todo     @relation(fields: [todoId], references: [id], onDelete: Cascade)
 }
 
 model Todo {

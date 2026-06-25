@@ -200,7 +200,7 @@ if ($connectTestResult.TcpTestSucceeded) {
 }
 ```
 
-> **ストレージキーの入手先：** `Z:\applippliportal\CLAUDE.md` に実際のキーが記載されています。
+> **ストレージキー・GitHub トークン・SQL パスワードの入手先：** `Z:\applippliportal\SECRETS.md` に記載されています（gitignore済み・GitHub には上がらない）。
 > GitHub Secrets にも `AZURE_STORAGE_KEY` として登録済み（CI/CD で使用）。
 
 ### デプロイ時の自動バックアップ
@@ -229,50 +229,57 @@ Z:\applippliportal\                     ← ソースコード一式
 
 ## 開発環境のセットアップ（全PC共通）
 
-**作業ディレクトリは `Z:\applippliportal` を直接使用します。ローカルにはコピーしません。**
+**ソースコードは `Z:\applippliportal` を直接使用します。ローカルにはコピーしません。**
+**`node_modules` のみ各PCのローカル（`C:\workportal_modules`）に置きます。**
+（Azure File Share は SMB の制限で `node_modules` を置けないため）
 
 ### 初回セットアップ（新しい PC）
 
-```powershell
-# 1. Z: ドライブをマウント（CLAUDE.md の「Azure File Share」セクション参照）
+**`Z:\applippliportal\SECRETS.md` に完全な手順とストレージキーが記載されています。**
+新規PCはそちらを参照してください（Step 1〜3 が全部書いてある）。
 
-# 2. Z:\applippliportal に移動
-cd Z:\applippliportal
-
-# 3. 依存関係インストール（node_modules が Z: に入る）
-npm install
-
-# 4. Prisma クライアント生成
-npx prisma generate
-
-# 5. 開発サーバー起動
-npm run dev
-# → http://localhost:3000
-```
+概要：
+1. `SECRETS.md` の Step 1 コマンドで Z: をマウント
+2. `Z:\applippliportal\setup.ps1` を実行（git・node_modules 自動設定）
+3. `Z:\applippliportal\dev.ps1` で起動 → `http://localhost:3000`
 
 ### 2回目以降
 
 ```powershell
-# Z: をマウントして作業ディレクトリに移動するだけ
-cd Z:\applippliportal
-npm run dev
+# 起動スクリプトを実行するだけ
+Z:\applippliportal\dev.ps1
 ```
 
 ### DB スキーマ変更時
 
 ```powershell
-cd Z:\applippliportal
-
-# 本番 DB に直接適用
-npx prisma db push
+# prisma コマンドは node_modules が必要なため、ローカルの npx を使う
+$env:NODE_PATH = "C:\workportal_modules\node_modules"
+Set-Location "Z:\applippliportal"
+& "C:\workportal_modules\node_modules\.bin\prisma.cmd" db push
 
 # ※ CI（GitHub Actions）では prisma db push を実行しない
 # ※ スキーマ変更は必ずここから手動適用
 ```
 
+### ファイル構成（PC ごと）
+
+```
+Z:\applippliportal\          ← ソースコード（全PC共通）
+  src/, prisma/, .env, etc.
+  dev.ps1                    ← 開発サーバー起動スクリプト
+  setup.ps1                  ← 初回セットアップスクリプト
+
+C:\workportal_modules\       ← 各PCのローカル（自動作成）
+  node_modules\              ← npm パッケージ（~300 MB）
+  package.json               ← Z: からコピー
+```
+
 ### 注意事項
 
-- `node_modules` と `.next` は Z: ドライブ上に置く（ローカルコピー不要）
+- ソースファイルの編集は `Z:\applippliportal\src\` 直接（VS Code で開く）
+- `node_modules` は `C:\workportal_modules\` （自動管理、手動操作不要）
+- `package.json` を変更したら `setup.ps1` を再実行して node_modules を更新
 - 複数人が同時に `npm run dev` すると競合する可能性があるため、同時作業は避ける
 - コード変更後は必ず `git add / commit / push` して GitHub を最新に保つ
 
@@ -329,6 +336,52 @@ npx prisma db push
 ```
 
 エージェント定義: [`.claude/agents/`](.claude/agents/)
+
+---
+
+## Claude への作業ルール
+
+### ソース変更後の必須確認
+
+**ソースコードを変更・実装した後は、必ず最後に以下を聞くこと：**
+
+> 「デプロイしますか？」
+
+ユーザーが「はい」と答えた場合：
+1. `git add` → `git commit` → `git push` を実行（`main` ブランチへ push で自動デプロイ）
+2. デプロイ完了後、`CHANGELOG.md` に変更内容を追記する
+
+### CHANGELOG.md の更新ルール
+
+デプロイ後は `CHANGELOG.md` の先頭に以下の形式で追記すること：
+
+```markdown
+## [YYYY-MM-DD] 変更タイトル
+
+### 追加
+- 追加した機能の説明
+
+### 変更
+- 変更した内容の説明
+
+### 修正
+- 修正したバグの説明
+```
+
+更新完了後、追記した内容をチャットにリスト形式で表示すること。
+
+### デプロイ完了後の必須対応
+
+以下を順番に実施すること：
+
+1. **テスターエージェントを呼び出し**、本番 URL へのアクセスチェックを実施する
+   - 確認項目：トップページ表示・ログイン・主要機能の動作
+   - 異常があればチャットに報告する
+
+2. CHANGELOG.md の更新内容をチャットにリスト形式で表示する
+
+3. 本番 URL をリンクで記載する：
+   `[WorkPortal](https://workportal-app-auqexf.azurewebsites.net)`
 
 ---
 

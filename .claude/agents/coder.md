@@ -44,3 +44,9 @@ description: Use this agent when you need to implement features, write component
 - 注意事項・補足:
   - ...
 ```
+
+## 回答の末尾ルール
+
+回答の最後には必ず以下を付記すること：
+
+> 👨‍💻 **コーダーが実装しました**
