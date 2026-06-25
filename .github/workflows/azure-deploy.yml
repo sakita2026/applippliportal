@@ -84,13 +84,8 @@ jobs:
             --path "backups/deploy_${TIMESTAMP}.zip"
           echo "Backed up to: backups/deploy_${TIMESTAMP}.zip"
 
-      - name: Stop app before deploy
-        continue-on-error: true
-        run: |
-          az webapp stop \
-            --name ${{ env.APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }}
-
+      # 注: 以前は「デプロイ前にアプリ停止」していたが、デプロイが詰まると本番が長時間ダウンするため廃止。
+      # webapps-deploy は稼働中のアプリに対して安全に再デプロイする（ダウンタイム最小）。
       - name: Deploy via webapps-deploy
         uses: azure/webapps-deploy@v3
         with:
