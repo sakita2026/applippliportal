@@ -50,3 +50,4 @@ dev.ps1
 scripts/publish_profile.xml
 scripts/set_github_secrets.py
 scripts/update_azure_credentials.py
+deploy.zip
