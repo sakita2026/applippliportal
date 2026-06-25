@@ -3,7 +3,8 @@ import { verifyAppToken } from '@/lib/sso';
 
 // orgportal からのSSOコールバック：トークン検証 → WorkPortalセッション発行
 export async function GET(req: NextRequest) {
-  const origin = req.nextUrl.origin;
+  // 本番(プロキシ背後)では nextUrl.origin が内部ホスト(0.0.0.0:8080)になるため、公開URLを優先
+  const origin = process.env.APP_BASE_URL || req.nextUrl.origin;
   const error = req.nextUrl.searchParams.get('error');
   const token = req.nextUrl.searchParams.get('token');
 

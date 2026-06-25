@@ -13,7 +13,8 @@ export function middleware(request: NextRequest) {
 
   // 未ログインは orgportal のSSOへ委譲（ログイン後 /api/auth/callback に戻る）
   if (!auth) {
-    const origin = request.nextUrl.origin
+    // 本番(プロキシ背後)では request.nextUrl.origin が内部ホスト(0.0.0.0:8080)になるため、公開URLを優先
+    const origin = process.env.APP_BASE_URL || request.nextUrl.origin
     const ret = encodeURIComponent(`${origin}/api/auth/callback`)
     return NextResponse.redirect(`${ORGPORTAL_URL}/authorize?app=workportal&return=${ret}`)
   }
