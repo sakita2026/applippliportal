@@ -73,6 +73,7 @@ jobs:
             --startup-file "node /home/site/wwwroot/server.js"
 
       - name: Backup deploy.zip to Azure File Share
+        continue-on-error: true   # バックアップ失敗（ストレージキー無効等）でデプロイを止めない
         run: |
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
           az storage file upload \
