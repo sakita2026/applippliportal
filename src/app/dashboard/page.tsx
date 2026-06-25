@@ -4,6 +4,8 @@ import { useStore, PRIORITY_LABELS, STATUS_LABELS, COLOR_MAP } from '@/lib/store
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { MyWork } from '@/components/MyWork';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 
 const PRIORITY_COLORS = {
   high: 'text-rose-500 bg-rose-50 dark:bg-rose-900/20',
@@ -19,72 +21,78 @@ const STATUS_COLORS = {
 
 export default function DashboardPage() {
   const { state } = useStore();
-  const { todos, events } = state;
+  const me = useCurrentUser();
+  const { todos: allTodos, events, decisions } = state;
+  // 個人タスクは本人のもの（または共有）だけを対象にする
+  const todos = allTodos.filter((t) => t.userId === me?.username || t.isShared);
   const today = new Date().toISOString().split('T')[0];
 
-  // KPI calculations
-  const totalTodos = todos.length;
-  const doneTodos = todos.filter((t) => t.status === 'done').length;
-  const inProgressTodos = todos.filter((t) => t.status === 'in_progress').length;
-  const overdueTodos = todos.filter(
-    (t) => t.status !== 'done' && t.dueDate && t.dueDate < today
-  ).length;
+  // 稼働中の決定タスク
+  const activeTasks = decisions
+    .filter((d) => d.everApproved)
+    .flatMap((d) => d.tasks.filter((t) => !t.pendingEdit));
 
-  const todayEvents = events.filter((e) => e.date === today);
-  const recentTodos = [...todos].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5);
+  // 期限超過：実行タスク（個人タスク＋決定タスク）／決定事項
+  const overdueTaskCount =
+    todos.filter((t) => t.status !== 'done' && t.dueDate && t.dueDate < today).length +
+    activeTasks.filter((t) => t.status !== 'done' && t.whenDue && t.whenDue < today).length;
+  const overdueDecisionCount = decisions.filter((d) => d.status !== 'done' && d.dueDate && d.dueDate < today).length;
+
+  const overdueIcon = (
+    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+    </svg>
+  );
 
   const kpiCards = [
     {
-      title: '総タスク',
-      value: totalTodos,
-      icon: (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-        </svg>
-      ),
-      color: 'from-indigo-500 to-indigo-600',
-      bg: 'bg-indigo-50 dark:bg-indigo-900/20',
-      iconColor: 'text-indigo-500',
+      title: '期限超過（タスク）',
+      href: '/todos?overdue=1',
+      value: overdueTaskCount,
+      icon: overdueIcon,
+      bg: 'bg-rose-50 dark:bg-rose-900/20',
+      iconColor: 'text-rose-500',
     },
     {
-      title: '完了済み',
-      value: doneTodos,
-      icon: (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      ),
-      color: 'from-emerald-500 to-emerald-600',
-      bg: 'bg-emerald-50 dark:bg-emerald-900/20',
-      iconColor: 'text-emerald-500',
-    },
-    {
-      title: '進行中',
-      value: inProgressTodos,
-      icon: (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      ),
-      color: 'from-violet-500 to-violet-600',
-      bg: 'bg-violet-50 dark:bg-violet-900/20',
-      iconColor: 'text-violet-500',
-    },
-    {
-      title: '期限超過',
-      value: overdueTodos,
-      icon: (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-        </svg>
-      ),
-      color: 'from-rose-500 to-rose-600',
+      title: '期限超過（決定事項）',
+      href: '/decisions?overdue=1',
+      value: overdueDecisionCount,
+      icon: overdueIcon,
       bg: 'bg-rose-50 dark:bg-rose-900/20',
       iconColor: 'text-rose-500',
     },
   ];
 
-  const completionRate = totalTodos > 0 ? Math.round((doneTodos / totalTodos) * 100) : 0;
+  // 完了集計（本日・今週・今月・今年）— 個人タスク＋決定タスクの completedAt を期間でカウント
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const dow = (now.getDay() + 6) % 7; // 月曜=0
+  const startOfWeek = startOfToday - dow * 86400000;
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const startOfYear = new Date(now.getFullYear(), 0, 1).getTime();
+  const completedTimes: number[] = [];
+  for (const t of todos) {
+    if (t.status === 'done' && t.completedAt) completedTimes.push(new Date(t.completedAt).getTime());
+  }
+  for (const d of decisions) {
+    if (!d.everApproved) continue;
+    for (const t of d.tasks) {
+      if (t.status === 'done' && t.completedAt) completedTimes.push(new Date(t.completedAt).getTime());
+    }
+  }
+  const periodCounts = (times: number[]) => [
+    { label: '本日', value: times.filter((ms) => ms >= startOfToday).length },
+    { label: '今週', value: times.filter((ms) => ms >= startOfWeek).length },
+    { label: '今月', value: times.filter((ms) => ms >= startOfMonth).length },
+    { label: '今年', value: times.filter((ms) => ms >= startOfYear).length },
+  ];
+  const completedCounts = periodCounts(completedTimes);
+  // 完了決定事項（status='done' の決定を completedAt で期間集計）
+  const completedDecisionTimes: number[] = [];
+  for (const d of decisions) {
+    if (d.status === 'done' && d.completedAt) completedDecisionTimes.push(new Date(d.completedAt).getTime());
+  }
+  const completedDecisionCounts = periodCounts(completedDecisionTimes);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 min-h-full">
@@ -98,12 +106,56 @@ export default function DashboardPage() {
         </h1>
       </div>
 
-      {/* KPI Cards — Bento Grid top row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      {/* 今日やること（自分・自部門の未完了＋承認待ち・リアルタイム） */}
+      <MyWork />
+
+      {/* 完了実行タスク（本日・今週・今月・今年） */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold text-slate-800 dark:text-slate-100">完了実行タスク</h2>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          {completedCounts.map((c) => (
+            <div key={c.label} className="rounded-2xl p-4 sm:p-5 border" style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(12px)' }}>
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500 flex items-center justify-center mb-3">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <p className="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-slate-100">{c.value}</p>
+              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">{c.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 完了決定事項（本日・今週・今月・今年） */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold text-slate-800 dark:text-slate-100">完了決定事項</h2>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          {completedDecisionCounts.map((c) => (
+            <div key={c.label} className="rounded-2xl p-4 sm:p-5 border" style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(12px)' }}>
+              <div className="w-10 h-10 rounded-xl bg-sky-50 dark:bg-sky-900/20 text-sky-500 flex items-center justify-center mb-3">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <p className="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-slate-100">{c.value}</p>
+              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">{c.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 期限超過（タスク／決定事項） */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4">
         {kpiCards.map((card) => (
-          <div
+          <Link
             key={card.title}
-            className="rounded-2xl p-4 sm:p-5 border transition-all duration-200 hover:shadow-md hover:-translate-y-0.5"
+            href={card.href}
+            className="rounded-2xl p-4 sm:p-5 border transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 block"
             style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(12px)' }}
           >
             <div className={`w-10 h-10 rounded-xl ${card.bg} ${card.iconColor} flex items-center justify-center mb-3`}>
@@ -111,166 +163,10 @@ export default function DashboardPage() {
             </div>
             <p className="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-slate-100">{card.value}</p>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">{card.title}</p>
-          </div>
+          </Link>
         ))}
       </div>
 
-      {/* Main Bento Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-        {/* Recent Todos — large card */}
-        <div
-          className="lg:col-span-2 rounded-2xl border overflow-hidden"
-          style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(12px)' }}
-        >
-          <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--border-color)' }}>
-            <h2 className="font-semibold text-slate-800 dark:text-slate-100">最近のタスク</h2>
-            <Link href="/todos" className="text-xs text-indigo-500 hover:text-indigo-600 font-medium transition-colors">
-              すべて見る →
-            </Link>
-          </div>
-          <div className="divide-y" style={{ borderColor: 'var(--border-color)' }}>
-            {recentTodos.map((todo) => (
-              <div key={todo.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 transition-colors">
-                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                  todo.status === 'done' ? 'bg-emerald-400' : todo.status === 'in_progress' ? 'bg-indigo-400' : 'bg-slate-300'
-                }`} />
-                <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-medium truncate ${todo.status === 'done' ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}>
-                    {todo.title}
-                  </p>
-                  {todo.dueDate && (
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      期限: {format(new Date(todo.dueDate + 'T00:00:00'), 'M月d日', { locale: ja })}
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRIORITY_COLORS[todo.priority]}`}>
-                    {PRIORITY_LABELS[todo.priority]}
-                  </span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[todo.status]}`}>
-                    {STATUS_LABELS[todo.status]}
-                  </span>
-                </div>
-              </div>
-            ))}
-            {recentTodos.length === 0 && (
-              <p className="text-center text-sm text-slate-400 py-8">タスクがありません</p>
-            )}
-          </div>
-        </div>
-
-        {/* Right column */}
-        <div className="space-y-4 sm:space-y-6">
-          {/* Progress card */}
-          <div
-            className="rounded-2xl p-5 border"
-            style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(12px)' }}
-          >
-            <h2 className="font-semibold text-slate-800 dark:text-slate-100 mb-4">完了率</h2>
-            <div className="flex items-center justify-center">
-              <div className="relative w-28 h-28">
-                <svg className="w-28 h-28 -rotate-90" viewBox="0 0 100 100">
-                  <circle cx="50" cy="50" r="40" fill="none" stroke="currentColor" strokeWidth="8" className="text-slate-100 dark:text-slate-800" />
-                  <circle
-                    cx="50" cy="50" r="40" fill="none"
-                    stroke="url(#grad)" strokeWidth="8"
-                    strokeLinecap="round"
-                    strokeDasharray={`${completionRate * 2.51} 251`}
-                    className="transition-all duration-700"
-                  />
-                  <defs>
-                    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="#6366f1" />
-                      <stop offset="100%" stopColor="#7c3aed" />
-                    </linearGradient>
-                  </defs>
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-2xl font-bold text-slate-800 dark:text-slate-100">{completionRate}%</span>
-                  <span className="text-xs text-slate-400">完了</span>
-                </div>
-              </div>
-            </div>
-            <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-              <div>
-                <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{doneTodos}</p>
-                <p className="text-xs text-slate-400">完了</p>
-              </div>
-              <div>
-                <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{inProgressTodos}</p>
-                <p className="text-xs text-slate-400">進行中</p>
-              </div>
-              <div>
-                <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{totalTodos - doneTodos - inProgressTodos}</p>
-                <p className="text-xs text-slate-400">未着手</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Today's events */}
-          <div
-            className="rounded-2xl border overflow-hidden"
-            style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(12px)' }}
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--border-color)' }}>
-              <h2 className="font-semibold text-slate-800 dark:text-slate-100">本日の予定</h2>
-              <Link href="/calendar" className="text-xs text-indigo-500 hover:text-indigo-600 font-medium transition-colors">
-                カレンダー →
-              </Link>
-            </div>
-            <div className="p-3 space-y-2">
-              {todayEvents.length === 0 ? (
-                <p className="text-center text-sm text-slate-400 py-4">予定なし</p>
-              ) : (
-                todayEvents.map((event) => (
-                  <div key={event.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 transition-colors">
-                    <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${COLOR_MAP[event.color]}`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{event.title}</p>
-                      {event.startTime && (
-                        <p className="text-xs text-slate-400">{event.startTime}{event.endTime && ` - ${event.endTime}`}</p>
-                      )}
-                    </div>
-                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
-                      event.shareStatus === 'shared'
-                        ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
-                    }`}>
-                      {event.shareStatus === 'shared' ? '共有' : '非公開'}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Activity summary bottom */}
-      <div
-        className="rounded-2xl p-5 border"
-        style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(12px)' }}
-      >
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100 mb-4">今週のアクティビティ</h2>
-        <div className="flex items-end gap-1.5 h-16">
-          {[3, 5, 2, 7, 4, inProgressTodos + doneTodos, doneTodos].map((val, i) => {
-            const days = ['月', '火', '水', '木', '金', '土', '日'];
-            const max = 8;
-            const height = Math.max((val / max) * 100, 8);
-            const isToday = i === new Date().getDay() - 1;
-            return (
-              <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                <div
-                  className={`w-full rounded-t-md transition-all duration-300 ${isToday ? 'bg-gradient-to-t from-indigo-500 to-violet-500' : 'bg-indigo-200 dark:bg-indigo-800'}`}
-                  style={{ height: `${height}%` }}
-                />
-                <span className={`text-xs ${isToday ? 'text-indigo-500 font-semibold' : 'text-slate-400'}`}>{days[i]}</span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
 }

@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { useStore, PRIORITY_LABELS, STATUS_LABELS } from '@/lib/store';
-import type { Priority, TodoStatus, Todo, TodoStep } from '@/types';
+import Link from 'next/link';
+import { useStore, PRIORITY_LABELS, STATUS_LABELS, resolveMemberName } from '@/lib/store';
+import type { Priority, TodoStatus, Todo, TodoStep, DecisionTask } from '@/types';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { useCurrentUser } from '@/lib/useCurrentUser';
-import { getUserByUsername } from '@/lib/users';
+import { getDepartmentName } from '@/lib/departments';
+import { ScopeControl } from '@/components/ScopeControl';
+import { taskVisible, defaultView, type View } from '@/lib/visibility';
 
 const PRIORITY_COLORS: Record<Priority, string> = {
   high: 'text-rose-500 bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800',
@@ -20,7 +23,7 @@ const PRIORITY_DOT: Record<Priority, string> = {
   low: 'bg-emerald-400',
 };
 
-type FilterStatus = 'all' | TodoStatus;
+type FilterStatus = 'all' | 'incomplete' | TodoStatus;
 type FilterPriority = 'all' | Priority;
 
 const PRIORITY_ORDER: Record<Priority, number> = { high: 0, medium: 1, low: 2 };
@@ -45,57 +48,31 @@ function TodoForm({
   onSave: (data: Omit<Todo, 'id' | 'createdAt' | 'steps'>, steps: DraftStep[]) => Promise<void>;
   onClose: () => void;
 }) {
+  const { state } = useStore();
+  const me = useCurrentUser();
   const [title, setTitle] = useState(initial?.title ?? '');
-  const [description, setDescription] = useState(initial?.description ?? '');
   const [priority, setPriority] = useState<Priority>(initial?.priority ?? 'medium');
-  const [status, setStatus] = useState<TodoStatus>(initial?.status ?? 'todo');
+  const [status] = useState<TodoStatus>(initial?.status ?? 'todo');
   const [dueDate, setDueDate] = useState(initial?.dueDate ?? '');
+  const [startDate, setStartDate] = useState(initial?.startDate ?? '');
+  const [whereLoc, setWhereLoc] = useState(initial?.whereLoc ?? '');
+  const [why, setWhy] = useState(initial?.why ?? '');
+  const [how, setHow] = useState(initial?.how ?? '');
   const [isShared, setIsShared] = useState(initial?.isShared ?? false);
-  const [steps, setSteps] = useState<DraftStep[]>(
-    (initial?.steps ?? []).map((s) => ({ id: s.id, title: s.title, done: s.done, stepOrder: s.stepOrder, dueDate: s.dueDate, dueTime: s.dueTime }))
-  );
   const [saving, setSaving] = useState(false);
-  const lastInputRef = useRef<HTMLInputElement>(null);
-
-  const addStep = () => {
-    setSteps((prev) => [...prev, { title: '', done: false, stepOrder: prev.length }]);
-    setTimeout(() => lastInputRef.current?.focus(), 50);
-  };
-
-  const updateStepTitle = (index: number, value: string) => {
-    setSteps((prev) => prev.map((s, i) => i === index ? { ...s, title: value } : s));
-  };
-
-  const removeStep = (index: number) => {
-    setSteps((prev) => prev.filter((_, i) => i !== index).map((s, i) => ({ ...s, stepOrder: i })));
-  };
-
-  const handleStepKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (index === steps.length - 1) {
-        addStep();
-      } else {
-        const inputs = document.querySelectorAll<HTMLInputElement>('[data-step-input]');
-        inputs[index + 1]?.focus();
-      }
-    }
-    if (e.key === 'Backspace' && steps[index].title === '') {
-      e.preventDefault();
-      removeStep(index);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || saving) return;
     setSaving(true);
-    const validSteps = steps
-      .filter((s) => s.title.trim())
-      .map((s, i) => ({ ...s, title: s.title.trim(), stepOrder: i }));
     await onSave(
-      { title: title.trim(), description: description.trim() || undefined, priority, status, dueDate: dueDate || undefined, isShared },
-      validSteps
+      {
+        title: title.trim(), priority, status, dueDate: dueDate || undefined,
+        startDate: startDate || undefined, who: me?.username || undefined, departmentId: me?.departmentId || undefined,
+        whereLoc: whereLoc.trim() || undefined, why: why.trim() || undefined, how: how.trim() || undefined,
+        isShared,
+      },
+      []
     );
     setSaving(false);
     onClose();
@@ -120,54 +97,34 @@ function TodoForm({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3">
-          {/* タスク名 */}
+          {/* 何を（タスク内容） */}
           <input
-            type="text" placeholder="タスク名 *" required value={title}
+            type="text" placeholder="何を（タスク内容）*" required value={title}
             onChange={(e) => setTitle(e.target.value)}
             className="w-full px-3 py-2.5 rounded-xl border text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             style={{ borderColor: 'var(--border-color)' }}
           />
 
-          {/* 詳細 */}
-          <textarea
-            placeholder="詳細（任意）" value={description}
-            onChange={(e) => setDescription(e.target.value)} rows={2}
-            className="w-full px-3 py-2.5 rounded-xl border text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
-            style={{ borderColor: 'var(--border-color)' }}
-          />
-
-          {/* 優先度 */}
-          <div>
-            <label className="text-xs text-slate-500 mb-2 block">優先度</label>
-            <div className="grid grid-cols-3 gap-2">
-              {(['high', 'medium', 'low'] as Priority[]).map((p) => (
-                <button key={p} type="button" onClick={() => setPriority(p)}
-                  className={`py-2 rounded-xl text-sm font-medium border transition-all ${priority === p ? PRIORITY_COLORS[p] : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:border-indigo-300'}`}>
-                  {PRIORITY_LABELS[p]}
-                </button>
-              ))}
-            </div>
+          {/* 担当・部門は自分（ログインユーザー）固定。テキスト表示のみ。 */}
+          <div className="flex flex-wrap gap-3 text-xs text-slate-500 dark:text-slate-400 px-1">
+            <span>担当: <span className="font-medium text-slate-700 dark:text-slate-200">{me?.name ?? '自分'}</span></span>
+            <span>部門: <span className="font-medium text-slate-700 dark:text-slate-200">{me?.departmentId ? getDepartmentName(me.departmentId, state.departments) : '（未設定）'}</span></span>
           </div>
 
-          {/* ステータス */}
-          <div>
-            <label className="text-xs text-slate-500 mb-2 block">ステータス</label>
-            <div className="grid grid-cols-3 gap-2">
-              {(['todo', 'in_progress', 'done'] as TodoStatus[]).map((s) => (
-                <button key={s} type="button" onClick={() => setStatus(s)}
-                  className={`py-2 rounded-xl text-xs font-medium border transition-all ${status === s ? 'bg-indigo-500 text-white border-indigo-500' : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:border-indigo-300'}`}>
-                  {STATUS_LABELS[s]}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 期限 */}
-          <div>
-            <label className="text-xs text-slate-500 mb-1 block">期限</label>
-            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              style={{ borderColor: 'var(--border-color)' }} />
+          {/* 5W1H（担当・部門は自分固定） */}
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-xs text-slate-400 flex flex-col gap-0.5">開始日
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
+                className="px-3 py-2 rounded-xl border text-sm bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400" style={{ borderColor: 'var(--border-color)' }} /></label>
+            <label className="text-xs text-slate-400 flex flex-col gap-0.5">完了予定日
+              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
+                className="px-3 py-2 rounded-xl border text-sm bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400" style={{ borderColor: 'var(--border-color)' }} /></label>
+            <input placeholder="どこで" value={whereLoc} onChange={(e) => setWhereLoc(e.target.value)}
+              className="px-3 py-2 rounded-xl border text-sm bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400" style={{ borderColor: 'var(--border-color)' }} />
+            <input placeholder="なぜ" value={why} onChange={(e) => setWhy(e.target.value)}
+              className="px-3 py-2 rounded-xl border text-sm bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400" style={{ borderColor: 'var(--border-color)' }} />
+            <input placeholder="どうやって" value={how} onChange={(e) => setHow(e.target.value)}
+              className="col-span-2 px-3 py-2 rounded-xl border text-sm bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400" style={{ borderColor: 'var(--border-color)' }} />
           </div>
 
           {/* 共有 */}
@@ -187,76 +144,6 @@ function TodoForm({
               </svg>
               {isShared ? '全員に公開中' : '自分のみ（非公開）'}
             </button>
-          </div>
-
-          {/* 工程 */}
-          <div>
-            <label className="text-xs text-slate-500 mb-2 block">工程</label>
-            <div className="space-y-1.5">
-              {steps.map((step, index) => (
-                <div key={index} className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    {/* ハンドル */}
-                    <span className="text-slate-300 dark:text-slate-600 flex-shrink-0 cursor-grab">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
-                      </svg>
-                    </span>
-                    {/* 番号 */}
-                    <span className="text-xs text-slate-400 w-5 text-right flex-shrink-0">{index + 1}.</span>
-                    {/* 入力 */}
-                    <input
-                      type="text"
-                      data-step-input
-                      ref={index === steps.length - 1 ? lastInputRef : undefined}
-                      value={step.title}
-                      onChange={(e) => updateStepTitle(index, e.target.value)}
-                      onKeyDown={(e) => handleStepKeyDown(e, index)}
-                      placeholder={`工程 ${index + 1}`}
-                      className="flex-1 px-2.5 py-1.5 rounded-lg border text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                      style={{ borderColor: 'var(--border-color)' }}
-                    />
-                    {/* 削除 */}
-                    <button
-                      type="button"
-                      onClick={() => removeStep(index)}
-                      className="p-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-900/20 text-slate-300 hover:text-rose-400 transition-colors flex-shrink-0"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                  {/* 日付・時間入力 */}
-                  <div className="flex items-center gap-2 pl-7">
-                    <input
-                      type="date"
-                      value={step.dueDate ?? ''}
-                      onChange={(e) => setSteps((prev) => prev.map((s, i) => i === index ? { ...s, dueDate: e.target.value || undefined } : s))}
-                      className="flex-1 px-2 py-1 rounded-lg border text-xs bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                      style={{ borderColor: 'var(--border-color)' }}
-                    />
-                    <input
-                      type="time"
-                      value={step.dueTime ?? ''}
-                      onChange={(e) => setSteps((prev) => prev.map((s, i) => i === index ? { ...s, dueTime: e.target.value || undefined } : s))}
-                      className="w-28 px-2 py-1 rounded-lg border text-xs bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                      style={{ borderColor: 'var(--border-color)' }}
-                    />
-                  </div>
-                </div>
-              ))}
-              <button
-                type="button"
-                onClick={addStep}
-                className="flex items-center gap-1.5 text-xs text-indigo-500 hover:text-indigo-700 transition-colors mt-1 pl-1"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                工程を追加
-              </button>
-            </div>
           </div>
 
           <button
@@ -311,12 +198,13 @@ function TodoItem({ todo, onEdit, onDelete, onToggle, currentUsername }: {
   onToggle: (t: Todo) => void;
   currentUsername: string | null;
 }) {
+  const { state, updateTodo } = useStore();
   const [stepsOpen, setStepsOpen] = useState(false);
   const today = new Date().toISOString().split('T')[0];
   const isOverdue = todo.status !== 'done' && todo.dueDate && todo.dueDate < today;
-  const steps = todo.steps ?? [];
+  const steps: TodoStep[] = []; // 工程は廃止（表示しない）
   const isOwnTask = !todo.userId || todo.userId === currentUsername;
-  const ownerUser = todo.userId ? getUserByUsername(todo.userId) : null;
+  const ownerName = todo.userId ? resolveMemberName(state.members, todo.userId) : null;
   const doneCount = steps.filter((s) => s.done).length;
   const hasSteps = steps.length > 0;
   const progress = hasSteps ? (doneCount / steps.length) * 100 : 0;
@@ -353,9 +241,6 @@ function TodoItem({ todo, onEdit, onDelete, onToggle, currentUsername }: {
             <p className={`text-sm font-medium ${todo.status === 'done' ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-100'}`}>
               {todo.title}
             </p>
-            <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${PRIORITY_COLORS[todo.priority]}`}>
-              {PRIORITY_LABELS[todo.priority]}
-            </span>
             {todo.isShared && (
               <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-violet-50 dark:bg-violet-900/20 text-violet-500 border border-violet-200 dark:border-violet-800 flex items-center gap-1">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -364,9 +249,9 @@ function TodoItem({ todo, onEdit, onDelete, onToggle, currentUsername }: {
                 共有
               </span>
             )}
-            {!isOwnTask && ownerUser && (
+            {!isOwnTask && ownerName && (
               <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500">
-                {ownerUser.name}
+                {ownerName}
               </span>
             )}
           </div>
@@ -399,13 +284,20 @@ function TodoItem({ todo, onEdit, onDelete, onToggle, currentUsername }: {
           )}
 
           <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+            {todo.who && <span>担当: {resolveMemberName(state.members, todo.who)}</span>}
+            {todo.departmentId && <span>部門: {getDepartmentName(todo.departmentId, state.departments)}</span>}
+            {todo.startDate && <span>開始: {todo.startDate.slice(5)}</span>}
             {todo.dueDate && (
               <span className={`flex items-center gap-1 ${isOverdue ? 'text-rose-500 font-medium' : ''}`}>
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                {isOverdue && '⚠ '}
-                {format(new Date(todo.dueDate + 'T00:00:00'), 'M月d日', { locale: ja })}
+                {isOverdue && '⚠ '}完了予定 {format(new Date(todo.dueDate + 'T00:00:00'), 'M月d日', { locale: ja })}
+              </span>
+            )}
+            {(todo.why || todo.whereLoc || todo.how) && (
+              <span className="text-slate-400">
+                {todo.whereLoc && `／場所: ${todo.whereLoc}`}{todo.why && `／理由: ${todo.why}`}{todo.how && `／方法: ${todo.how}`}
               </span>
             )}
             <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -413,9 +305,20 @@ function TodoItem({ todo, onEdit, onDelete, onToggle, currentUsername }: {
               todo.status === 'in_progress' ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500' :
               'bg-slate-100 dark:bg-slate-800 text-slate-500'
             }`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[todo.priority]}`} />
               {STATUS_LABELS[todo.status]}
             </span>
+          </div>
+
+          {/* ステータス切替（未着手／進行中／完了） */}
+          <div className="flex gap-1 mt-2">
+            {(['todo', 'in_progress', 'done'] as TodoStatus[]).map((s) => (
+              <button key={s} onClick={() => { if (s !== todo.status) updateTodo({ ...todo, status: s }); }}
+                className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
+                  todo.status === s ? 'bg-indigo-500 text-white' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}>
+                {STATUS_LABELS[s]}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -467,18 +370,293 @@ function TodoItem({ todo, onEdit, onDelete, onToggle, currentUsername }: {
 }
 
 type FilterView = 'mine' | 'shared';
+type FilterType = 'all' | 'todo' | 'decision';
 
-// ── Main Todos Page ──────────────────────────────────────────────────────────
+type ActiveDecisionTask = DecisionTask & { decisionTitle: string; boardOnly?: boolean };
+
+const DT_STATUS: TodoStatus[] = ['todo', 'in_progress', 'done'];
+
+// ── Decision Task Item（決定事項由来の 5W1H タスク）─────────────────────────────
+function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
+  const { state, updateDecisionTask, editDecisionTask, undoEditTask } = useStore();
+  const me = useCurrentUser();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({
+    what: task.what, why: task.why ?? '', who: task.who ?? '', whereLoc: task.whereLoc ?? '',
+    whenDue: task.whenDue ?? '', how: task.how ?? '', departmentId: task.departmentId ?? '', startDate: task.startDate ?? '',
+  });
+  const [projList, setProjList] = useState<{ id: string; name: string }[]>([]);
+  const [polList, setPolList] = useState<{ id: string; name: string }[]>([]);
+  const [selProjects, setSelProjects] = useState<string[]>(task.projects?.map((p) => p.projectId) ?? []);
+  const [selPolicies, setSelPolicies] = useState<string[]>(task.policies?.map((p) => p.policyId) ?? []);
+  const today = new Date().toISOString().split('T')[0];
+  const isOverdue = task.status !== 'done' && task.whenDue && task.whenDue < today;
+  const efld = 'w-full px-2 py-1.5 rounded-lg border text-xs bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-400';
+
+  const startEdit = () => {
+    setEditing(true);
+    if (projList.length === 0) fetch('/api/projects').then((r) => r.ok ? r.json() : []).then(setProjList).catch(() => {});
+    if (polList.length === 0) fetch('/api/policies').then((r) => r.ok ? r.json() : []).then(setPolList).catch(() => {});
+  };
+  const toggle = (arr: string[], set: (v: string[]) => void, id: string) => {
+    if (arr.includes(id)) set(arr.filter((x) => x !== id));
+    else if (arr.length < 5) set([...arr, id]);
+  };
+
+  const changeStatus = async (status: TodoStatus) => {
+    if (busy || status === task.status) return;
+    setBusy(true);
+    await updateDecisionTask(task.decisionId, { ...task, status }).catch(() => null);
+    setBusy(false);
+  };
+
+  const saveEdit = async () => {
+    if (busy || !draft.what.trim()) return;
+    setBusy(true);
+    await editDecisionTask(task.decisionId, {
+      ...task,
+      what: draft.what.trim(), why: draft.why.trim() || undefined, who: draft.who || undefined,
+      whereLoc: draft.whereLoc.trim() || undefined, whenDue: draft.whenDue || undefined,
+      how: draft.how.trim() || undefined, departmentId: draft.departmentId || undefined,
+      startDate: draft.startDate || undefined,
+      projectIds: selProjects, policyIds: selPolicies,
+    } as DecisionTask & { projectIds: string[]; policyIds: string[] }).catch(() => null);
+    setBusy(false);
+    setEditing(false);
+  };
+
+  return (
+    <div className={`rounded-xl border transition-all duration-200 hover:shadow-sm group ${task.status === 'done' ? 'opacity-60' : ''}`}
+      style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(8px)' }}>
+      <div className="flex items-start gap-3 p-4">
+        {/* 完了トグル */}
+        <button
+          onClick={() => changeStatus(task.status === 'done' ? 'todo' : 'done')}
+          className={`w-5 h-5 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center transition-all ${
+            task.status === 'done' ? 'bg-emerald-400 border-emerald-400' : 'border-slate-300 dark:border-slate-600 hover:border-indigo-400'
+          }`}
+        >
+          {task.status === 'done' && (
+            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+        </button>
+
+        <div className="flex-1 min-w-0">
+          <button onClick={() => setOpen((o) => !o)} className="flex flex-wrap items-center gap-2 mb-1 text-left w-full">
+            <span className={`text-sm font-medium ${task.status === 'done' ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-100'}`}>
+              {task.what}
+            </span>
+            <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-sky-50 dark:bg-sky-900/20 text-sky-600 border border-sky-200 dark:border-sky-800">
+              決定事項
+            </span>
+            {task.boardOnly && (
+              <span title="取締役＋担当部長のみに表示" className="text-xs px-2 py-0.5 rounded-full font-medium bg-rose-50 dark:bg-rose-900/20 text-rose-600 border border-rose-200 dark:border-rose-800 flex items-center gap-1">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                取締役会限定（取締役＋担当部長のみ表示）
+              </span>
+            )}
+            {task.pendingEdit && (
+              <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">再承認待ち</span>
+            )}
+            <svg className={`w-3.5 h-3.5 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {task.pendingEdit && task.editedBy === me?.username && (
+            <div className="mb-1">
+              <button
+                onClick={async () => { if (busy) return; if (!confirm('この実行タスクの編集を取り消して、編集前に戻しますか？')) return; setBusy(true); await undoEditTask(task.decisionId, task.id).catch(() => null); setBusy(false); }}
+                disabled={busy}
+                className="text-xs px-2.5 py-1 rounded-lg font-medium text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                {busy ? '取り消し中…' : '編集を取り消す（編集前に戻す）'}
+              </button>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+            {task.whenDue && (
+              <span className={`flex items-center gap-1 ${isOverdue ? 'text-rose-500 font-medium' : ''}`}>
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                {isOverdue && '⚠ '}{format(new Date(task.whenDue + 'T00:00:00'), 'M月d日', { locale: ja })}
+              </span>
+            )}
+            {task.who && <span>担当: {resolveMemberName(state.members, task.who)}</span>}
+            {task.departmentId && <span>部門: {getDepartmentName(task.departmentId, state.departments)}</span>}
+          </div>
+          {((task.policies && task.policies.length > 0) || (task.projects && task.projects.length > 0)) && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {task.policies?.map((p) => <span key={p.policyId} className="text-xs px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-600">方針: {p.policy.name}</span>)}
+              {task.projects?.map((p) => <span key={p.projectId} className="text-xs px-1.5 py-0.5 rounded-full bg-sky-50 dark:bg-sky-900/20 text-sky-600">PJ: {p.project.name}</span>)}
+            </div>
+          )}
+
+          {/* ステータス切替 */}
+          <div className="flex gap-1 mt-2">
+            {DT_STATUS.map((s) => (
+              <button key={s} onClick={() => changeStatus(s)} disabled={busy}
+                className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
+                  task.status === s ? 'bg-indigo-500 text-white' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}>
+                {STATUS_LABELS[s]}
+              </button>
+            ))}
+          </div>
+
+          {/* 5W1H 詳細 / 編集 */}
+          {open && !editing && (
+            <div className="mt-2 pt-2 border-t text-xs text-slate-500 dark:text-slate-400 space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+              <p>決定事項: <Link href="/decisions" className="text-indigo-500 hover:underline">{task.decisionTitle}</Link></p>
+              {task.startDate && <p>開始日: {task.startDate}</p>}
+              {task.whenDue && <p>完了予定日: {task.whenDue}</p>}
+              {task.why && <p>なぜ: {task.why}</p>}
+              {task.whereLoc && <p>どこで: {task.whereLoc}</p>}
+              {task.how && <p>どうやって: {task.how}</p>}
+              <button onClick={startEdit} className="text-indigo-500 hover:underline mt-1">5W1H・方針・プロジェクトを編集（編集すると再承認になります）</button>
+            </div>
+          )}
+          {open && editing && (
+            <div className="mt-2 pt-2 border-t space-y-2" style={{ borderColor: 'var(--border-color)' }}>
+              <input className={efld} style={{ borderColor: 'var(--border-color)' }} placeholder="何を *" value={draft.what} onChange={(e) => setDraft({ ...draft, what: e.target.value })} />
+              <div className="grid grid-cols-2 gap-2">
+                <select className={efld} style={{ borderColor: 'var(--border-color)' }} value={draft.who} onChange={(e) => setDraft({ ...draft, who: e.target.value })}>
+                  <option value="">誰が（担当）</option>
+                  {state.members.map((m) => <option key={m.username} value={m.username}>{m.name}</option>)}
+                </select>
+                <select className={efld} style={{ borderColor: 'var(--border-color)' }} value={draft.departmentId} onChange={(e) => setDraft({ ...draft, departmentId: e.target.value })}>
+                  <option value="">部門</option>
+                  {state.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+                <label className="text-xs text-slate-400 flex flex-col gap-0.5">開始日
+                  <input type="date" className={efld} style={{ borderColor: 'var(--border-color)' }} value={draft.startDate} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} /></label>
+                <label className="text-xs text-slate-400 flex flex-col gap-0.5">完了予定日
+                  <input type="date" className={efld} style={{ borderColor: 'var(--border-color)' }} value={draft.whenDue} onChange={(e) => setDraft({ ...draft, whenDue: e.target.value })} /></label>
+                <input className={efld} style={{ borderColor: 'var(--border-color)' }} placeholder="どこで" value={draft.whereLoc} onChange={(e) => setDraft({ ...draft, whereLoc: e.target.value })} />
+                <input className={efld} style={{ borderColor: 'var(--border-color)' }} placeholder="なぜ" value={draft.why} onChange={(e) => setDraft({ ...draft, why: e.target.value })} />
+                <input className={efld} style={{ borderColor: 'var(--border-color)' }} placeholder="どうやって" value={draft.how} onChange={(e) => setDraft({ ...draft, how: e.target.value })} />
+              </div>
+              {polList.length > 0 && (
+                <div>
+                  <p className="text-xs text-slate-400 mb-1">方針（最大5）</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {polList.map((p) => (
+                      <button key={p.id} type="button" onClick={() => toggle(selPolicies, setSelPolicies, p.id)}
+                        className={`px-2 py-0.5 rounded-full text-xs border ${selPolicies.includes(p.id) ? 'bg-amber-500 text-white border-amber-500' : 'text-slate-500 border-slate-200 dark:border-slate-700'}`}>{p.name}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {projList.length > 0 && (
+                <div>
+                  <p className="text-xs text-slate-400 mb-1">プロジェクト（最大5）</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {projList.map((p) => (
+                      <button key={p.id} type="button" onClick={() => toggle(selProjects, setSelProjects, p.id)}
+                        className={`px-2 py-0.5 rounded-full text-xs border ${selProjects.includes(p.id) ? 'bg-sky-500 text-white border-sky-500' : 'text-slate-500 border-slate-200 dark:border-slate-700'}`}>{p.name}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button onClick={saveEdit} disabled={busy} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-500 text-white disabled:opacity-60">保存（再承認へ）</button>
+                <button onClick={() => { setEditing(false); setDraft({ what: task.what, why: task.why ?? '', who: task.who ?? '', whereLoc: task.whereLoc ?? '', whenDue: task.whenDue ?? '', how: task.how ?? '', departmentId: task.departmentId ?? '', startDate: task.startDate ?? '' }); }} className="px-3 py-1.5 rounded-lg text-xs text-slate-500">取消</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Tasks Page（通常タスク + 決定タスクの統合）───────────────────────────
 export default function TodosPage() {
   const { state, addTodo, updateTodo, deleteTodo, addStep, updateStep, deleteStep } = useStore();
   const currentUser = useCurrentUser();
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
-  const [filterPriority, setFilterPriority] = useState<FilterPriority>('all');
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>('incomplete');
   const [filterView, setFilterView] = useState<FilterView>('mine');
+  const [filterType, setFilterType] = useState<FilterType>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editTodo, setEditTodo] = useState<Todo | null>(null);
-  const [sortBy, setSortBy] = useState<'createdAt' | 'dueDate' | 'priority'>('createdAt');
+  const [sortBy, setSortBy] = useState<'createdAt' | 'dueDate' | 'priority'>('dueDate');
+  const [quickFilter, setQuickFilter] = useState<'none' | 'overdue' | 'dueSoon' | 'inProgress'>('none');
+  const [view, setView] = useState<View>('mine');
+  const [viewInit, setViewInit] = useState(false);
+  const [todoParam, setTodoParam] = useState<string | null>(null);
+  const [todoParamHandled, setTodoParamHandled] = useState(false);
+
+  // ダッシュボード等から ?status= / ?type= / ?view= / ?fv= / ?todo= を初期フィルターへ反映
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const s = params.get('status');
+    if (s === 'todo' || s === 'in_progress' || s === 'done' || s === 'incomplete' || s === 'all') setFilterStatus(s);
+    const ty = params.get('type');
+    if (ty === 'todo' || ty === 'decision') setFilterType(ty);
+    const v = params.get('view');
+    if (v === 'mine' || v === 'dept' || v === 'all') { setView(v); setViewInit(true); }
+    const fv = params.get('fv');
+    if (fv === 'mine' || fv === 'shared') setFilterView(fv);
+    // 期限超過カードから ?overdue=1（期限切れのみ絞込）
+    if (params.get('overdue') === '1') { setQuickFilter('overdue'); setFilterStatus('all'); }
+    setTodoParam(params.get('todo'));
+  }, []);
+
+  // ?todo=<id> で来たら、対象の個人タスクの編集をその場で開く（読み込み後に一度だけ）
+  useEffect(() => {
+    if (todoParamHandled || !todoParam) return;
+    const t = state.todos.find((x) => x.id === todoParam);
+    if (t) { setEditTodo(t); setShowForm(true); setTodoParamHandled(true); }
+  }, [todoParam, todoParamHandled, state.todos]);
+
+  // 役職に応じた初期表示（取締役以上=全体／部長=自部門／社員=自分）。ただしURLでview指定済みなら上書きしない。
+  useEffect(() => {
+    if (!viewInit && currentUser) {
+      const v = new URLSearchParams(window.location.search).get('view');
+      if (!(v === 'mine' || v === 'dept' || v === 'all')) setView(defaultView(currentUser));
+      setViewInit(true);
+    }
+  }, [currentUser, viewInit]);
+
+  // 決定事項由来のタスク（承認済みのうち、再承認待ちでなく、表示対象のもの）
+  const decisionTasks = useMemo<ActiveDecisionTask[]>(() =>
+    state.decisions
+      .filter((d) => d.everApproved)
+      .flatMap((d) => d.tasks
+        .filter((t) => {
+          // 再承認待ち(pendingEdit)は通常非表示。ただし「自分が編集した」タスクは本人に表示し取消できるようにする
+          if (t.pendingEdit) return t.editedBy === currentUser?.username;
+          // 全社通達（部門=全員）は共有タスク側に集約。本人担当のものは「自分」にも表示する
+          if (d.departmentId === 'all') {
+            return t.who === currentUser?.username || filterView === 'shared';
+          }
+          return taskVisible(d, t, view, currentUser);
+        })
+        .map((t) => ({ ...t, decisionTitle: d.title, boardOnly: d.boardOnly }))),
+    [state.decisions, view, filterView, currentUser]);
+
+  const filteredDecisionTasks = useMemo(() => {
+    let tasks = [...decisionTasks];
+    if (filterStatus === 'incomplete') tasks = tasks.filter((t) => t.status !== 'done');
+    else if (filterStatus !== 'all') tasks = tasks.filter((t) => t.status === filterStatus);
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      tasks = tasks.filter((t) => t.what.toLowerCase().includes(q) || t.decisionTitle.toLowerCase().includes(q));
+    }
+    tasks.sort((a, b) => {
+      if (sortBy === 'dueDate') return (a.whenDue ?? 'zzz').localeCompare(b.whenDue ?? 'zzz');
+      if (sortBy === 'priority') return 0; // 決定事項タスクは優先度を持たない
+      return (b.createdAt ?? '').localeCompare(a.createdAt ?? ''); // 作成日順（新しい順）
+    });
+    return tasks;
+  }, [decisionTasks, filterStatus, searchQuery, sortBy]);
 
   const filteredTodos = useMemo(() => {
     let todos = [...state.todos];
@@ -487,19 +665,39 @@ export default function TodosPage() {
     } else {
       todos = todos.filter((t) => t.isShared);
     }
-    if (filterStatus !== 'all') todos = todos.filter((t) => t.status === filterStatus);
-    if (filterPriority !== 'all') todos = todos.filter((t) => t.priority === filterPriority);
+    if (filterStatus === 'incomplete') todos = todos.filter((t) => t.status !== 'done');
+    else if (filterStatus !== 'all') todos = todos.filter((t) => t.status === filterStatus);
     if (searchQuery) todos = todos.filter((t) =>
       t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.description?.toLowerCase().includes(searchQuery.toLowerCase())
     );
     todos.sort((a, b) => {
-      if (sortBy === 'priority') return PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
       if (sortBy === 'dueDate') return (a.dueDate ?? 'zzz').localeCompare(b.dueDate ?? 'zzz');
       return b.createdAt.localeCompare(a.createdAt);
     });
     return todos;
-  }, [state.todos, filterView, filterStatus, filterPriority, searchQuery, sortBy, currentUser]);
+  }, [state.todos, filterView, filterStatus, searchQuery, sortBy, currentUser]);
+
+  // 個人タスクと決定タスクを統合して1つの並び順に（完了予定日＝古い順／作成日＝新しい順）
+  const combinedList = useMemo(() => {
+    const items: Array<{ key: string; kind: 'todo' | 'decision'; due?: string | null; created: string; status: string; todo?: Todo; task?: ActiveDecisionTask }> = [];
+    if (filterType !== 'decision') filteredTodos.forEach((t) => items.push({ key: `todo-${t.id}`, kind: 'todo', due: t.dueDate, created: t.createdAt, status: t.status, todo: t }));
+    if (filterType !== 'todo') filteredDecisionTasks.forEach((t) => items.push({ key: `dec-${t.id}`, kind: 'decision', due: t.whenDue, created: t.createdAt, status: t.status, task: t }));
+    // ステータスカード（期限切れ・今週締切・進行中）クリック時の絞り込み
+    let result = items;
+    if (quickFilter !== 'none') {
+      const today = new Date().toISOString().split('T')[0];
+      const weekLater = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+      if (quickFilter === 'overdue') result = items.filter((x) => x.status !== 'done' && x.due && x.due < today);
+      else if (quickFilter === 'dueSoon') result = items.filter((x) => x.status !== 'done' && x.due && x.due >= today && x.due <= weekLater);
+      else if (quickFilter === 'inProgress') result = items.filter((x) => x.status === 'in_progress');
+    }
+    result.sort((a, b) => {
+      if (sortBy === 'dueDate') return (a.due || 'zzzz').localeCompare(b.due || 'zzzz');
+      return (b.created || '').localeCompare(a.created || ''); // 作成日（新しい順）
+    });
+    return result;
+  }, [filteredTodos, filteredDecisionTasks, filterType, sortBy, quickFilter]);
 
   const handleToggle = (todo: Todo) => {
     updateTodo({ ...todo, status: todo.status === 'done' ? 'todo' : 'done' });
@@ -547,22 +745,33 @@ export default function TodosPage() {
     setEditTodo(null);
   };
 
-  const stats = useMemo(() => ({
-    total: state.todos.length,
-    done: state.todos.filter((t) => t.status === 'done').length,
-    inProgress: state.todos.filter((t) => t.status === 'in_progress').length,
-    high: state.todos.filter((t) => t.priority === 'high' && t.status !== 'done').length,
-  }), [state.todos]);
+  // 表示範囲（自分/自部門・通常/決定）に連動し、ステータス絞り込みには左右されない固定指標
+  const stats = useMemo(() => {
+    const todosInScope = filterType !== 'decision'
+      ? (filterView === 'mine' ? state.todos.filter((t) => t.userId === currentUser?.username) : state.todos.filter((t) => t.isShared))
+      : [];
+    const decInScope = filterType !== 'todo' ? decisionTasks : [];
+    const items = [
+      ...todosInScope.map((t) => ({ status: t.status, due: t.dueDate })),
+      ...decInScope.map((t) => ({ status: t.status, due: t.whenDue })),
+    ];
+    const today = new Date().toISOString().split('T')[0];
+    const weekLater = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+    const open = items.filter((x) => x.status !== 'done');
+    return {
+      remaining: open.length,
+      overdue: open.filter((x) => x.due && x.due < today).length,
+      dueSoon: open.filter((x) => x.due && x.due >= today && x.due <= weekLater).length,
+      inProgress: items.filter((x) => x.status === 'in_progress').length,
+    };
+  }, [state.todos, decisionTasks, filterType, filterView, currentUser]);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-5 min-h-full">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-slate-100">タスク管理</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            {stats.total}件のタスク / {stats.done}件完了
-          </p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-slate-100">実行タスク</h1>
         </div>
         <button
           onClick={() => { setEditTodo(null); setShowForm(true); }}
@@ -576,19 +785,27 @@ export default function TodosPage() {
         </button>
       </div>
 
-      {/* Stats */}
+      {/* 決定事項由来タスクの表示範囲（取締役以上=全体/部門、それ以外=自分/自部門） */}
+      <ScopeControl view={view} setView={setView} user={currentUser} departments={state.departments} />
+
+      {/* Stats（クリックで該当タスクに絞り込み） */}
       <div className="grid grid-cols-4 gap-3">
-        {[
-          { label: '全タスク', value: stats.total, color: 'text-slate-700 dark:text-slate-200' },
-          { label: '進行中', value: stats.inProgress, color: 'text-indigo-500' },
-          { label: '完了', value: stats.done, color: 'text-emerald-500' },
-          { label: '高優先度', value: stats.high, color: 'text-rose-500' },
-        ].map((s) => (
-          <div key={s.label} className="rounded-xl p-3 border text-center" style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(8px)' }}>
-            <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
-            <p className="text-xs text-slate-400 mt-0.5">{s.label}</p>
-          </div>
-        ))}
+        {([
+          { label: '残タスク', value: stats.remaining, color: 'text-slate-700 dark:text-slate-200', qf: 'none', onSelect: () => { setQuickFilter('none'); setFilterStatus('incomplete'); } },
+          { label: '期限切れ', value: stats.overdue, color: 'text-rose-500', qf: 'overdue', onSelect: () => { setQuickFilter('overdue'); setFilterStatus('all'); } },
+          { label: '今週締切', value: stats.dueSoon, color: 'text-amber-500', qf: 'dueSoon', onSelect: () => { setQuickFilter('dueSoon'); setFilterStatus('all'); } },
+          { label: '進行中', value: stats.inProgress, color: 'text-indigo-500', qf: 'inProgress', onSelect: () => { setQuickFilter('inProgress'); setFilterStatus('all'); } },
+        ] as const).map((s) => {
+          const isActive = quickFilter === s.qf;
+          return (
+            <button key={s.label} onClick={s.onSelect}
+              className={`rounded-xl p-3 border text-center transition-all ${isActive ? 'ring-2 ring-indigo-400 shadow-md' : 'hover:shadow-sm hover:-translate-y-0.5'}`}
+              style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(8px)' }}>
+              <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
+              <p className="text-xs text-slate-400 mt-0.5">{s.label}</p>
+            </button>
+          );
+        })}
       </div>
 
       {/* View tabs */}
@@ -620,17 +837,9 @@ export default function TodosPage() {
           />
         </div>
         <div className="flex rounded-lg overflow-hidden border text-xs" style={{ borderColor: 'var(--border-color)' }}>
-          {([['all', 'すべて'], ['todo', '未着手'], ['in_progress', '進行中'], ['done', '完了']] as [FilterStatus, string][]).map(([s, label]) => (
-            <button key={s} onClick={() => setFilterStatus(s)}
-              className={`px-3 py-2 font-medium transition-colors ${filterStatus === s ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20'}`}>
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="flex rounded-lg overflow-hidden border text-xs" style={{ borderColor: 'var(--border-color)' }}>
-          {([['all', '全優先度'], ['high', '高'], ['medium', '中'], ['low', '低']] as [FilterPriority, string][]).map(([p, label]) => (
-            <button key={p} onClick={() => setFilterPriority(p)}
-              className={`px-3 py-2 font-medium transition-colors ${filterPriority === p ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20'}`}>
+          {([['all', 'すべて'], ['incomplete', '未完了'], ['todo', '未着手'], ['in_progress', '進行中'], ['done', '完了']] as [FilterStatus, string][]).map(([s, label]) => (
+            <button key={s} onClick={() => { setFilterStatus(s); setQuickFilter('none'); }}
+              className={`px-3 py-2 font-medium transition-colors ${filterStatus === s && quickFilter === 'none' ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20'}`}>
               {label}
             </button>
           ))}
@@ -640,15 +849,14 @@ export default function TodosPage() {
           className="px-3 py-2 rounded-xl border text-xs bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-400"
           style={{ borderColor: 'var(--border-color)' }}
         >
-          <option value="createdAt">作成日順</option>
-          <option value="dueDate">期限順</option>
-          <option value="priority">優先度順</option>
+          <option value="dueDate">完了予定日</option>
+          <option value="createdAt">作成日（新しい順）</option>
         </select>
       </div>
 
-      {/* Todo list */}
+      {/* Task list（通常タスク + 決定タスク 統合） */}
       <div className="space-y-2">
-        {filteredTodos.length === 0 ? (
+        {combinedList.length === 0 ? (
           <div className="text-center py-16 text-slate-400">
             <svg className="w-12 h-12 mx-auto mb-3 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -656,16 +864,20 @@ export default function TodosPage() {
             <p className="text-sm">タスクが見つかりません</p>
           </div>
         ) : (
-          filteredTodos.map((todo) => (
-            <TodoItem
-              key={todo.id}
-              todo={todo}
-              onEdit={handleEdit}
-              onDelete={deleteTodo}
-              onToggle={handleToggle}
-              currentUsername={currentUser?.username ?? null}
-            />
-          ))
+          <>
+            {combinedList.map((c) => c.kind === 'todo' ? (
+              <TodoItem
+                key={c.key}
+                todo={c.todo!}
+                onEdit={handleEdit}
+                onDelete={deleteTodo}
+                onToggle={handleToggle}
+                currentUsername={currentUser?.username ?? null}
+              />
+            ) : (
+              <DecisionTaskItem key={c.key} task={c.task!} />
+            ))}
+          </>
         )}
       </div>
 
@@ -679,3 +891,4 @@ export default function TodosPage() {
     </div>
   );
 }
+

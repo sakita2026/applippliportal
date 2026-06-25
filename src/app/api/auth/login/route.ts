@@ -1,18 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { findUser } from '@/lib/users'
+import { NextResponse } from 'next/server'
 
-export async function POST(req: NextRequest) {
-  const { username, password } = await req.json()
-  const user = findUser(username, password)
-  if (!user) {
-    return NextResponse.json({ error: 'ユーザー名またはパスワードが違います' }, { status: 401 })
-  }
-  const res = NextResponse.json({ username: user.username, name: user.name })
-  res.cookies.set('workportal_auth', user.username, {
-    path: '/',
-    maxAge: 86400,
-    sameSite: 'lax',
-    httpOnly: false,
-  })
-  return res
+// ローカル認証は廃止。ログインは組織ポータル（orgportal）のSSOに統一。
+export async function POST() {
+  return NextResponse.json(
+    { error: 'ローカルログインは廃止されました。組織ポータルからログインしてください。' },
+    { status: 410 },
+  )
 }

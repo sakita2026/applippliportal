@@ -114,6 +114,13 @@ export interface Todo {
   priority: Priority;
   status: TodoStatus;
   dueDate?: string;
+  startDate?: string | null;   // 開始日
+  why?: string | null;         // なぜ
+  who?: string | null;         // 誰が（担当）
+  whereLoc?: string | null;    // どこで
+  how?: string | null;         // どうやって
+  departmentId?: string | null;// 担当部門
+  completedAt?: string | null; // 完了日時
   isShared?: boolean;
   createdAt: string;
   steps?: TodoStep[];
@@ -129,4 +136,127 @@ export interface CalendarEvent {
   shareStatus: ShareStatus;
   color: EventColor;
   todoId?: string;
+}
+
+// ---------------------------------------------------------------------------
+// 決定事項 / 5W1H タスク
+// ---------------------------------------------------------------------------
+
+/** 決定事項のステータス（承認待ち / 承認済み・稼働中 / 完了） */
+export type DecisionStatus = 'pending' | 'approved' | 'done';
+
+export interface Department {
+  id: string;
+  name: string;
+  sortOrder: number;
+}
+
+/** 役職（部署内のポジション） */
+export type Position = 'manager' | 'chief' | 'staff';
+
+/** システム権限 */
+export type MemberRole = 'admin' | 'member';
+
+/** 認証方式 */
+export type AuthType = 'password' | 'email';
+
+/** メンバー（社員）。パスワードは API レスポンスに含めない。 */
+export interface Member {
+  id: string;
+  username: string;
+  name: string;
+  initials: string;
+  email?: string | null;
+  authType: AuthType;
+  role: MemberRole;
+  departmentId?: string | null;
+  position?: Position | null;
+  isDirector: boolean;
+  isRepresentative: boolean;
+  isAdvisor: boolean;
+  active: boolean;
+}
+
+/** 決定事項に紐づく 5W1H タスク */
+export interface DecisionTask {
+  id: string;
+  decisionId: string;
+  what: string;          // 何を
+  why?: string;          // なぜ
+  who?: string;          // 誰が（担当 username）
+  whereLoc?: string;     // どこで
+  whenDue?: string;      // いつ（期限 YYYY-MM-DD）
+  how?: string;          // どうやって
+  departmentId?: string; // 部門
+  status: TodoStatus;
+  completedAt?: string | null; // 完了日時
+  startDate?: string | null; // 開始日 YYYY-MM-DD（whenDue を完了予定日として扱う）
+  pendingEdit?: boolean;  // このタスク自体が再承認待ち（承認まで一覧で非表示）
+  editedBy?: string | null; // このタスクを直近に編集した人（取り消しはこの人のみ可）
+  sortOrder: number;
+  createdAt: string;
+  projects?: DecisionProjectLink[];
+  policies?: DecisionPolicyLink[];
+}
+
+/** 決定事項に紐づくプロジェクト（タグ） */
+export interface DecisionProjectLink {
+  projectId: string;
+  project: { id: string; name: string };
+}
+
+/** 決定事項に紐づく方針（タグ） */
+export interface DecisionPolicyLink {
+  policyId: string;
+  policy: { id: string; name: string };
+}
+
+/** 決定事項 */
+export interface Decision {
+  id: string;
+  title: string;
+  description?: string;
+  status: DecisionStatus;
+  createdBy: string;
+  departmentId?: string | null;
+  assigneeUsername?: string | null; // 担当者（だれが）
+  boardOnly?: boolean;
+  deleteRequested?: boolean;
+  everApproved?: boolean;
+  hasPrevState?: boolean;     // 承認待ち中に「編集の取り消し」が可能か
+  editedBy?: string | null;   // 直近に編集した人（取り消しはこの人のみ可）
+  startDate?: string | null;  // 開始日 YYYY-MM-DD
+  dueDate?: string | null;    // 完了予定日 YYYY-MM-DD
+  completedAt?: string | null; // 完了日時
+  editNote?: string | null;
+  approvedBy?: string;
+  approvedAt?: string;
+  createdAt: string;
+  tasks: DecisionTask[];
+  projects?: DecisionProjectLink[];
+  policies?: DecisionPolicyLink[];
+  approvals?: DecisionApproval[];
+  deleteApprovals?: DecisionApproval[];
+}
+
+/** 承認の進捗（誰が承認したか）。pending 中でも「あと何名」を表示するために使う */
+export interface DecisionApproval {
+  approver: string;
+  asDirector: boolean;
+  asManager: boolean;
+  createdAt?: string;
+}
+
+/** 決定事項の作成リクエスト（5W1H タスクを内包） */
+export interface CreateDecisionRequest {
+  title: string;
+  description?: string;
+  tasks: Array<Omit<DecisionTask, 'id' | 'decisionId' | 'status' | 'sortOrder' | 'createdAt'>>;
+  projectIds?: string[];
+  policyIds?: string[];
+  departmentId?: string;
+  assigneeUsername?: string;
+  boardOnly?: boolean;
+  startDate?: string;
+  dueDate?: string;
 }

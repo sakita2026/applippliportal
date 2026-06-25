@@ -7,32 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Todo {
-  id          String     @id @default(cuid())
-  userId      String?    @db.NVarChar(50)
-  title       String     @db.NVarChar(500)
-  description String?    @db.NVarChar(2000)
-  priority    String     @db.NVarChar(10)
-  status      String     @db.NVarChar(20)
-  dueDate     String?    @db.NVarChar(10)
-  isShared    Boolean    @default(false)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  steps       TodoStep[]
-}
-
-model TodoStep {
-  id        String   @id @default(cuid())
-  todoId    String   @db.NVarChar(1000)
-  title     String   @db.NVarChar(500)
-  stepOrder Int      @default(0)
-  done      Boolean  @default(false)
-  dueDate   String?  @db.NVarChar(10)
-  dueTime   String?  @db.NVarChar(5)
-  createdAt DateTime @default(now())
-  todo      Todo     @relation(fields: [todoId], references: [id], onDelete: Cascade)
-}
-
 model CalendarEvent {
   id          String   @id @default(cuid())
   title       String   @db.NVarChar(500)
@@ -45,4 +19,241 @@ model CalendarEvent {
   todoId      String?  @db.NVarChar(50)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model Todo {
+  id          String     @id @default(cuid())
+  title       String     @db.NVarChar(500)
+  description String?    @db.NVarChar(2000)
+  priority    String     @db.NVarChar(10)
+  status      String     @db.NVarChar(20)
+  dueDate     String?    @db.NVarChar(10)
+  startDate   String?    @db.NVarChar(10)   // 開始日（完了予定日=dueDate）
+  why         String?    @db.NVarChar(1000) // なぜ
+  who         String?    @db.NVarChar(50)   // 誰が（担当 username）
+  whereLoc    String?    @db.NVarChar(200)  // どこで
+  how         String?    @db.NVarChar(1000) // どうやって
+  departmentId String?   @db.NVarChar(50)   // 担当部門
+  completedAt DateTime?                      // 完了にした日時（done になった時刻。未完了に戻すと null）
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  isShared    Boolean    @default(false)
+  userId      String?    @db.NVarChar(50)
+  steps       TodoStep[]
+}
+
+model TodoStep {
+  id        String   @id @default(cuid())
+  todoId    String
+  title     String   @db.NVarChar(500)
+  stepOrder Int      @default(0)
+  done      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  dueDate   String?  @db.NVarChar(10)
+  dueTime   String?  @db.NVarChar(5)
+  Todo      Todo     @relation(fields: [todoId], references: [id], onDelete: Cascade)
+}
+
+// メール認証（マジックリンク）の一時トークン
+model MagicLinkToken {
+  id        String    @id @default(cuid())
+  token     String    @unique @db.NVarChar(128)
+  username  String    @db.NVarChar(50)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+// 部門マスタ
+model Department {
+  id        String   @id @db.NVarChar(50)
+  name      String   @db.NVarChar(100)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+// メンバー（社員）。認証もこのテーブルへ移行。
+model Member {
+  id               String   @id @default(cuid())
+  username         String   @unique @db.NVarChar(50)
+  name             String   @db.NVarChar(100)
+  initials         String   @db.NVarChar(10)
+  email            String?  @db.NVarChar(200)
+  authType         String   @db.NVarChar(10)  // password | email
+  password         String?  @db.NVarChar(200) // authType=password のときのみ
+  role             String   @db.NVarChar(10)  // admin | member（システム権限）
+  departmentId     String?  @db.NVarChar(50)
+  position         String?  @db.NVarChar(10)  // manager(部長) | chief(課長) | staff(社員)
+  isDirector       Boolean  @default(false)   // 取締役
+  isRepresentative Boolean  @default(false)   // 代表取締役
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// 決定事項（みんなに通達する決定。承認されるとタスクが稼働する）
+model Decision {
+  id          String         @id @default(cuid())
+  title       String         @db.NVarChar(500)
+  description String?        @db.NVarChar(2000)
+  status       String         @db.NVarChar(20) // pending | approved | done
+  createdBy    String         @db.NVarChar(50) // 起案者 username
+  departmentId String?        @db.NVarChar(50) // 担当部署（担当部長の判定に使用）
+  assigneeUsername String?    @db.NVarChar(50) // 担当者（だれが）
+  boardOnly    Boolean        @default(false)  // 取締役会限定（取締役会メンバーのみ閲覧・入力）
+  approvedBy   String?        @db.NVarChar(50) // 後方互換（最終承認者）
+  approvedAt   DateTime?
+  deleteRequested Boolean     @default(false)  // 削除申請中（承認で実削除）
+  everApproved Boolean        @default(false)  // 一度でも承認されたか（再承認待ち中もタスクを稼働継続させる）
+  startDate    String?        @db.NVarChar(10)  // 開始日 YYYY-MM-DD
+  dueDate      String?        @db.NVarChar(10)  // 完了予定日 YYYY-MM-DD
+  completedAt  DateTime?                         // 完了にした日時（done になった時刻。未完了に戻すと null）
+  editNote     String?        @db.NVarChar(1000) // 直近の変更内容（承認者向け）
+  prevState    String?        @db.NVarChar(Max)  // 編集前スナップショット(JSON)。承認待ち中のみ「編集の取り消し」に使用
+  editedBy     String?        @db.NVarChar(50)   // 直近に編集した人（編集の取り消しはこの人のみ可）
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  tasks        DecisionTask[]
+  projects     DecisionProject[]
+  policies     DecisionPolicy[]
+}
+
+// 承認記録（兼 変更履歴）。役職は承認時にディレクトリから判定し記録。
+model Approval {
+  id         String   @id @default(cuid())
+  entityType String   @db.NVarChar(20) // policy | project | decision
+  entityId   String   @db.NVarChar(50)
+  action     String   @default("approve") @db.NVarChar(10) // approve（登録/編集の承認） | delete（削除の承認）
+  approver   String   @db.NVarChar(50) // username
+  asDirector Boolean  @default(false)  // 取締役として承認
+  asManager  Boolean  @default(false)  // 担当部長として承認
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+}
+
+// 監査ログ（追記専用・削除されない）。承認・削除承認・実削除を記録し、対象が消えても履歴が残る。
+model AuditLog {
+  id         String   @id @default(cuid())
+  entityType String   @db.NVarChar(20)  // policy | project | decision
+  entityId   String   @db.NVarChar(50)
+  title      String   @db.NVarChar(500) // 対象名のスナップショット（削除後も参照可）
+  action     String   @db.NVarChar(20)  // approve | delete_approve | deleted
+  actor      String   @db.NVarChar(50)  // 実行者 username
+  asDirector Boolean  @default(false)
+  asManager  Boolean  @default(false)
+  detail     String?  @db.NVarChar(1000)
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+}
+
+// 方針（最上位）
+model Policy {
+  id          String    @id @default(cuid())
+  name        String    @db.NVarChar(200)
+  description String?   @db.NVarChar(1000)
+  status      String    @db.NVarChar(20) @default("pending") // pending | approved
+  createdBy   String?   @db.NVarChar(50)
+  deleteRequested Boolean @default(false)
+  editNote    String?   @db.NVarChar(1000)
+  prevState   String?   @db.NVarChar(Max)
+  editedBy    String?   @db.NVarChar(50)
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  projects    Project[]
+  decisions   DecisionPolicy[]
+  taskLinks   TaskPolicy[]
+}
+
+// プロジェクト（方針の下、決定事項のタグ）
+model Project {
+  id          String   @id @default(cuid())
+  name        String   @db.NVarChar(200)
+  description String?  @db.NVarChar(1000)
+  policyId    String?
+  status      String   @db.NVarChar(20) @default("pending") // pending | approved
+  createdBy   String?  @db.NVarChar(50)
+  deleteRequested Boolean @default(false)
+  editNote    String?  @db.NVarChar(1000)
+  prevState   String?  @db.NVarChar(Max)
+  editedBy    String?  @db.NVarChar(50)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  policy      Policy?           @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  decisions   DecisionProject[]
+  taskLinks   TaskProject[]
+}
+
+// 決定事項と方針の紐づけ（1決定事項あたり最大5・アプリ側で制御）
+model DecisionPolicy {
+  id         String   @id @default(cuid())
+  decisionId String
+  policyId   String
+  createdAt  DateTime @default(now())
+  decision   Decision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  policy     Policy   @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  @@unique([decisionId, policyId])
+}
+
+// 決定事項とプロジェクトの紐づけ（1決定事項あたり最大5・アプリ側で制御）
+model DecisionProject {
+  id         String   @id @default(cuid())
+  decisionId String
+  projectId  String
+  createdAt  DateTime @default(now())
+  decision   Decision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([decisionId, projectId])
+}
+
+// 決定事項に紐づく 5W1H タスク
+model DecisionTask {
+  id           String   @id @default(cuid())
+  decisionId   String
+  what         String   @db.NVarChar(500)  // 何を（タスク内容）
+  why          String?  @db.NVarChar(1000) // なぜ
+  who          String?  @db.NVarChar(50)   // 誰が（担当 username）
+  whereLoc     String?  @db.NVarChar(200)  // どこで
+  whenDue      String?  @db.NVarChar(10)   // いつ（期限 YYYY-MM-DD）
+  how          String?  @db.NVarChar(1000) // どうやって
+  departmentId String?  @db.NVarChar(50)   // 部門
+  status       String   @db.NVarChar(20)   // todo | in_progress | done
+  completedAt  DateTime?                    // 完了にした日時（done になった時刻。未完了に戻すと null）
+  startDate    String?  @db.NVarChar(10)    // 開始日 YYYY-MM-DD
+  pendingEdit  Boolean  @default(false)     // このタスク自体が再承認待ち（承認まで実行タスク一覧で非表示）
+  prevState    String?  @db.NVarChar(Max)   // タスク編集前スナップショット(JSON)。承認待ち中のみ「編集の取り消し」に使用
+  editedBy     String?  @db.NVarChar(50)    // このタスクを直近に編集した人（取り消しはこの人のみ可）
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  decision     Decision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  projects     TaskProject[]
+  policies     TaskPolicy[]
+}
+
+// タスクとプロジェクトの紐づけ（1タスクあたり最大5）
+model TaskProject {
+  id        String       @id @default(cuid())
+  taskId    String
+  projectId String
+  createdAt DateTime     @default(now())
+  task      DecisionTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  project   Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, projectId])
+}
+
+// タスクと方針の紐づけ（1タスクあたり最大5）
+model TaskPolicy {
+  id        String       @id @default(cuid())
+  taskId    String
+  policyId  String
+  createdAt DateTime     @default(now())
+  task      DecisionTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  policy    Policy       @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, policyId])
 }

@@ -99,8 +99,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
-            <span className="font-bold text-sm bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
-              WorkPortal
+            <span className="font-bold text-xs bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent truncate max-w-[180px]">
+              決めたことを100％実行できる決定管理
             </span>
           </div>
           <div className="ml-auto">

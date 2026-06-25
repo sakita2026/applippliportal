@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "WorkPortal — 社員作業管理ポータル",
-  description: "タスク管理・カレンダー・ダッシュボードで業務を効率化する社員向け作業管理ポータル",
+  title: "決めたことを100％実行できる決定管理",
+  description: "決定事項・タスク・進捗・評価を一元管理",
 };
 
 export default function RootLayout({
