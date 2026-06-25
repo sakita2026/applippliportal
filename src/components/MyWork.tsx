@@ -6,7 +6,7 @@ import { useCurrentUser } from '@/lib/useCurrentUser';
 import type { Decision, Todo } from '@/types';
 
 type LiveTask = { id: string; title: string; due?: string | null; who?: string | null; departmentId?: string | null; status: string; source: 'todo' | 'decision'; decisionTitle?: string; decisionId?: string };
-type ApprovalItem = { key: string; title: string; type: '方針' | 'プロジェクト' | '決定事項'; action: '承認' | '削除承認'; href: string; approved?: number; required?: number; iApproved?: boolean };
+type ApprovalItem = { key: string; title: string; type: '方針' | 'プロジェクト' | '決定事項'; action: '承認' | '削除承認'; href: string; entityType: 'decision' | 'policy' | 'project'; entityId: string; approved?: number; required?: number; iApproved?: boolean };
 type Pol = { id: string; name: string; status: string; deleteRequested?: boolean; approvals?: { approver: string; createdAt: string }[]; deleteApprovals?: { approver: string; createdAt: string }[] };
 type Proj = Pol & { departmentId?: string | null };
 
@@ -34,6 +34,27 @@ export function MyWork() {
     const id = setInterval(load, 30_000); // 30秒ごとにリアルタイム更新
     return () => clearInterval(id);
   }, [load]);
+
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [approveErr, setApproveErr] = useState<string>('');
+
+  // ダッシュボードからその場で承認（決定事項・方針・プロジェクト共通の /api/approvals）
+  const approveItem = useCallback(async (item: ApprovalItem) => {
+    if (busyKey) return;
+    setBusyKey(item.key); setApproveErr('');
+    try {
+      const res = await fetch('/api/approvals', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entityType: item.entityType, entityId: item.entityId }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error ?? '承認に失敗しました'); }
+      await load();
+    } catch (e) {
+      setApproveErr(e instanceof Error ? e.message : '承認に失敗しました（時間をおいて再度お試しください）');
+    } finally {
+      setBusyKey(null);
+    }
+  }, [busyKey, load]);
 
   const isDir = !!me?.isDirector || !!me?.isRepresentative;
 
@@ -94,19 +115,19 @@ export function MyWork() {
         if (d.status === 'pending') {
           const approved = d.approvals?.length ?? 0;
           const iApproved = !!d.approvals?.some((a) => a.approver === me.username);
-          items.push({ key: `d-a-${d.id}`, title: d.title, type: '決定事項', action: '承認', href: '/decisions', approved, required: 2, iApproved });
+          items.push({ key: `d-a-${d.id}`, title: d.title, type: '決定事項', action: '承認', href: `/decisions?dec=${d.id}`, entityType: 'decision', entityId: d.id, approved, required: 2, iApproved });
         }
-        if (d.deleteRequested) items.push({ key: `d-d-${d.id}`, title: d.title, type: '決定事項', action: '削除承認', href: '/decisions', approved: d.deleteApprovals?.length ?? 0, required: 2, iApproved: !!d.deleteApprovals?.some((a) => a.approver === me.username) });
+        if (d.deleteRequested) items.push({ key: `d-d-${d.id}`, title: d.title, type: '決定事項', action: '削除承認', href: `/decisions?dec=${d.id}`, entityType: 'decision', entityId: d.id, approved: d.deleteApprovals?.length ?? 0, required: 2, iApproved: !!d.deleteApprovals?.some((a) => a.approver === me.username) });
       }
     }
     if (isDir) {
       for (const p of policies) {
-        if (p.status === 'pending') items.push({ key: `p-a-${p.id}`, title: p.name, type: '方針', action: '承認', href: '/projects', approved: p.approvals?.length ?? 0, required: 2, iApproved: !!p.approvals?.some((a) => a.approver === me.username) });
-        if (p.deleteRequested) items.push({ key: `p-d-${p.id}`, title: p.name, type: '方針', action: '削除承認', href: '/projects', approved: p.deleteApprovals?.length ?? 0, required: 2, iApproved: !!p.deleteApprovals?.some((a) => a.approver === me.username) });
+        if (p.status === 'pending') items.push({ key: `p-a-${p.id}`, title: p.name, type: '方針', action: '承認', href: '/projects', entityType: 'policy', entityId: p.id, approved: p.approvals?.length ?? 0, required: 2, iApproved: !!p.approvals?.some((a) => a.approver === me.username) });
+        if (p.deleteRequested) items.push({ key: `p-d-${p.id}`, title: p.name, type: '方針', action: '削除承認', href: '/projects', entityType: 'policy', entityId: p.id, approved: p.deleteApprovals?.length ?? 0, required: 2, iApproved: !!p.deleteApprovals?.some((a) => a.approver === me.username) });
       }
       for (const pr of projects) {
-        if (pr.status === 'pending') items.push({ key: `pj-a-${pr.id}`, title: pr.name, type: 'プロジェクト', action: '承認', href: '/projects', approved: pr.approvals?.length ?? 0, required: 2, iApproved: !!pr.approvals?.some((a) => a.approver === me.username) });
-        if (pr.deleteRequested) items.push({ key: `pj-d-${pr.id}`, title: pr.name, type: 'プロジェクト', action: '削除承認', href: '/projects', approved: pr.deleteApprovals?.length ?? 0, required: 2, iApproved: !!pr.deleteApprovals?.some((a) => a.approver === me.username) });
+        if (pr.status === 'pending') items.push({ key: `pj-a-${pr.id}`, title: pr.name, type: 'プロジェクト', action: '承認', href: '/projects', entityType: 'project', entityId: pr.id, approved: pr.approvals?.length ?? 0, required: 2, iApproved: !!pr.approvals?.some((a) => a.approver === me.username) });
+        if (pr.deleteRequested) items.push({ key: `pj-d-${pr.id}`, title: pr.name, type: 'プロジェクト', action: '削除承認', href: '/projects', entityType: 'project', entityId: pr.id, approved: pr.deleteApprovals?.length ?? 0, required: 2, iApproved: !!pr.deleteApprovals?.some((a) => a.approver === me.username) });
       }
     }
     return items;
@@ -156,18 +177,26 @@ export function MyWork() {
       {/* 1段目: あなたの承認待ち（左）＋取締役会限定（右・該当時のみ） */}
       <div className={`grid grid-cols-1 gap-4 ${boardOnlyDecisions.length > 0 ? 'lg:grid-cols-2' : ''}`}>
         <Section title="あなたの承認待ち" count={approvals.length} accent="bg-amber-500" href="/decisions?status=pending">
+          {approveErr && <p className="px-5 py-2 text-xs text-rose-600 dark:text-rose-400">{approveErr}</p>}
           {approvals.length === 0 ? <p className="text-center text-xs text-slate-400 py-6">承認待ちなし</p> : (<>
             {approvals.slice(0, 10).map((a) => (
-            <Link key={a.key} href={a.href} className="flex items-center gap-2 px-5 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800/40">
+            <div key={a.key} className="flex items-center gap-2 px-5 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800/40">
               <span className={`text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 ${TYPE_BADGE[a.type]}`}>{a.type}</span>
-              <span className="flex-1 text-slate-700 dark:text-slate-200 truncate">{a.title}</span>
+              <Link href={a.href} className="flex-1 text-slate-700 dark:text-slate-200 truncate hover:underline">{a.title}</Link>
               {a.required != null && (
                 a.iApproved
                   ? <span className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">✓{a.action === '削除承認' ? '削除' : ''}承認済・あと{Math.max(0, a.required - (a.approved ?? 0))}名</span>
                   : <span className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300">{a.approved ?? 0}/{a.required}・あと{Math.max(0, a.required - (a.approved ?? 0))}名</span>
               )}
-              <span className={`text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 ${a.action === '削除承認' ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'}`}>{a.action}</span>
-            </Link>
+              {a.action === '承認' && !a.iApproved ? (
+                <button onClick={() => approveItem(a)} disabled={busyKey === a.key}
+                  className="text-xs px-2.5 py-1 rounded-lg flex-shrink-0 font-medium bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 transition-colors">
+                  {busyKey === a.key ? '承認中…' : '承認する'}
+                </button>
+              ) : (
+                <Link href={a.href} className={`text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 ${a.action === '削除承認' ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'}`}>{a.action === '削除承認' ? '削除承認 →' : '確認 →'}</Link>
+              )}
+            </div>
             ))}
             {approvals.length > 10 && <Link href="/decisions?status=pending" className="block text-center text-xs text-indigo-500 hover:text-indigo-600 py-2">他{approvals.length - 10}件 — すべて見る →</Link>}
           </>)}
