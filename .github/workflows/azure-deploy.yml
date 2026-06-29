@@ -34,8 +34,8 @@ jobs:
         run: npm run build
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          # クライアントに焼き込まれる orgportal 公開URL（本番）
-          NEXT_PUBLIC_ORGPORTAL_URL: https://orgportal-app-auqexf.azurewebsites.net
+          # クライアントに焼き込まれる orgportal 公開URL（本番・独自ドメイン）
+          NEXT_PUBLIC_ORGPORTAL_URL: https://org.applippli.co.jp
 
       - name: Prepare deployment package
         run: |
