@@ -7,7 +7,8 @@ import type { Member } from '@/types'
 
 function getCookieUsername(): string | null {
   if (typeof document === 'undefined') return null
-  const match = document.cookie.split('; ').find((c) => c.startsWith('workportal_auth='))
+  // 表示用Cookie。認証はサーバ側の署名付き workportal_auth で行うため、これは氏名表示のためだけに使う。
+  const match = document.cookie.split('; ').find((c) => c.startsWith('workportal_user='))
   return match?.split('=')[1] ?? null
 }
 

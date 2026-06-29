@@ -1,28 +1,35 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { verifySession } from '@/lib/session'
 
 const ORGPORTAL_URL = process.env.ORGPORTAL_URL || 'http://localhost:3100'
 
-export function middleware(request: NextRequest) {
-  const auth = request.cookies.get('workportal_auth')
+export async function middleware(request: NextRequest) {
+  const path = request.nextUrl.pathname
+  const session = await verifySession(request.cookies.get('workportal_auth')?.value)
 
-  // /login は SSO 対象外（no_access 等のエラー表示用。ここを除外しないと無限リダイレクトになる）
-  if (request.nextUrl.pathname.startsWith('/login')) {
-    return NextResponse.next()
+  // クライアントが x-wp-user を偽装して送ってきても無効化（常に上書き／削除）
+  const headers = new Headers(request.headers)
+  headers.delete('x-wp-user')
+
+  if (session) {
+    // 検証済みのユーザー名のみを下流ハンドラへ渡す（信頼できる本人情報）
+    headers.set('x-wp-user', session.username)
+    return NextResponse.next({ request: { headers } })
   }
 
-  // 未ログインは orgportal のSSOへ委譲（ログイン後 /api/auth/callback に戻る）
-  if (!auth) {
-    // 本番(プロキシ背後)では request.nextUrl.origin が内部ホスト(0.0.0.0:8080)になるため、公開URLを優先
-    const origin = process.env.APP_BASE_URL || request.nextUrl.origin
-    const ret = encodeURIComponent(`${origin}/api/auth/callback`)
-    return NextResponse.redirect(`${ORGPORTAL_URL}/authorize?app=workportal&return=${ret}`)
+  // 未認証：API は 401、ページは SSO へリダイレクト
+  if (path.startsWith('/api/')) {
+    return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 })
   }
-
-  return NextResponse.next()
+  // 本番(プロキシ背後)では request.nextUrl.origin が内部ホストになるため、公開URLを優先
+  const origin = process.env.APP_BASE_URL || request.nextUrl.origin
+  const ret = encodeURIComponent(`${origin}/api/auth/callback`)
+  return NextResponse.redirect(`${ORGPORTAL_URL}/authorize?app=workportal&return=${ret}`)
 }
 
 export const config = {
-  // /api/auth/callback と静的アセットは除外
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)'],
+  // /api/auth/*（SSO入口）・/login・静的アセットは認証対象外。
+  // それ以外の /api/* も含めて中央でセッションを検証する。
+  matcher: ['/((?!api/auth|login|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)'],
 }

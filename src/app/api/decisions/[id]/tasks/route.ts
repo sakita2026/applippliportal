@@ -14,7 +14,7 @@ const DECISION_INCLUDE = {
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const username = req.cookies.get('workportal_auth')?.value ?? null;
+    const username = req.headers.get('x-wp-user');
     if (!username) return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
     // 決定事項への実行タスク追加は「部長以上」＝部長・取締役・代表取締役・管理者のみ
     const member = await getMember(username);
@@ -40,6 +40,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         why: why ?? null, who: who ?? null, whereLoc: whereLoc ?? null, whenDue: whenDue ?? null,
         how: how ?? null, departmentId: departmentId ?? null, startDate: startDate ?? null,
         status: 'todo', sortOrder,
+        createdBy: username ?? null, // 後追い追加＝追加した本人を作成者に
         pendingEdit: !!requireApproval,
         projects: Array.isArray(projectIds) ? { create: projectIds.slice(0, 5).map((pid: string) => ({ projectId: pid })) } : undefined,
         policies: Array.isArray(policyIds) ? { create: policyIds.slice(0, 5).map((pid: string) => ({ policyId: pid })) } : undefined,

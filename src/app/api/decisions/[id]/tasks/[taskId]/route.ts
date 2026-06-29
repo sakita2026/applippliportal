@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { writeAudit } from '@/lib/audit';
 import { snapshotTask } from '@/lib/snapshot';
+import { getMember } from '@/lib/approval';
+import { canManageDecisionTask } from '@/lib/visibility';
 
 const DECISION_INCLUDE = {
   tasks: { orderBy: { sortOrder: 'asc' as const }, include: { projects: { include: { project: true } }, policies: { include: { policy: true } } } },
@@ -19,12 +21,20 @@ export async function PUT(
     const body = await req.json();
     const { what, why, who, whereLoc, whenDue, how, departmentId, status, contentEdit, projectIds, policyIds, startDate } = body;
 
+    // 編集・ステータス変更は 入力者(起案者)＋担当者＋担当部長＋取締役 のみ
+    const member = await getMember(req.headers.get('x-wp-user'));
+    const curTask = await prisma.decisionTask.findUnique({ where: { id: taskId }, select: { who: true, departmentId: true, createdBy: true } });
+    const decForPerm = await prisma.decision.findUnique({ where: { id }, select: { departmentId: true } });
+    if (!curTask || !canManageDecisionTask(curTask, member, decForPerm?.departmentId ?? null)) {
+      return NextResponse.json({ error: '編集・ステータス変更は入力者・担当者・担当部長・取締役のみ可能です' }, { status: 403 });
+    }
+
     // 内容編集時は編集前を保持して差分を作る
     const beforeTask = contentEdit
       ? await prisma.decisionTask.findUnique({ where: { id: taskId }, include: { projects: { include: { project: true } }, policies: { include: { policy: true } } } })
       : null;
     // タスク編集前スナップショット（承認待ち中の「実行タスク編集の取り消し」用＝このタスクだけ復元）
-    const actor = req.cookies.get('workportal_auth')?.value ?? '';
+    const actor = (req.headers.get('x-wp-user') ?? '');
     const taskSnap = contentEdit ? await snapshotTask(taskId) : null;
 
     // 完了日時：done になった時に記録、未完了に戻したら null。既に done のものは時刻を保持。
@@ -123,11 +133,18 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string; taskId: string }> },
 ) {
   try {
-    const { taskId } = await params;
+    const { id, taskId } = await params;
+    // 削除は 担当者＋担当部長＋取締役 のみ（起案者は編集はできるが削除は不可）
+    const member = await getMember(req.headers.get('x-wp-user'));
+    const curTask = await prisma.decisionTask.findUnique({ where: { id: taskId }, select: { who: true, departmentId: true, createdBy: true } });
+    const decForPerm = await prisma.decision.findUnique({ where: { id }, select: { departmentId: true } });
+    if (!curTask || !canManageDecisionTask(curTask, member, decForPerm?.departmentId ?? null, { includeCreator: false })) {
+      return NextResponse.json({ error: '削除は担当者・担当部長・取締役のみ可能です' }, { status: 403 });
+    }
     await prisma.decisionTask.delete({ where: { id: taskId } });
     return NextResponse.json({ success: true });
   } catch {

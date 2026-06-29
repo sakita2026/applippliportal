@@ -13,7 +13,7 @@ const DECISION_INCLUDE = {
 // 実行タスクの編集取り消し（このタスクだけ編集前に復元）。承認待ちの間のみ・編集した本人のみ。
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string; taskId: string }> }) {
   const { id, taskId } = await params;
-  const username = req.cookies.get('workportal_auth')?.value ?? null;
+  const username = req.headers.get('x-wp-user');
   const member = await getMember(username);
   if (!member) return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
 

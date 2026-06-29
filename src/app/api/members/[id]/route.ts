@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { isAdminUser } from '@/lib/members';
 
 function getUsernameFromCookie(req: NextRequest): string | null {
-  return req.cookies.get('workportal_auth')?.value ?? null;
+  return req.headers.get('x-wp-user');
 }
 
 const SELECT = {

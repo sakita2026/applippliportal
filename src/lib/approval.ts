@@ -55,10 +55,21 @@ export function canApprove(member: WpMember, entityType: EntityType, ctx: Ctx): 
   return isDirectorLike(member);
 }
 
+/**
+ * プロジェクトの作成・編集・削除申請ができるか。
+ * 取締役（代表取締役含む）／または担当部長（対象部門の部長＝position=manager かつ自部門一致）のみ。
+ */
+export function canManageProject(projectDeptId: string | null | undefined, member: WpMember | null | undefined): boolean {
+  if (!member) return false;
+  if (isDirectorLike(member)) return true;
+  if (member.position === 'manager' && member.departmentId && projectDeptId === member.departmentId) return true;
+  return false;
+}
+
 /** その人がこの種別を新規登録できるか（承認マトリクスの「登録できる人」） */
 export function canCreate(member: WpMember, entityType: EntityType): boolean {
   if (entityType === 'policy') return isDirectorLike(member);                          // 取締役のみ（代表取締役含む）
-  if (entityType === 'project') return isDirectorLike(member) || member.position === 'manager'; // 担当部長・取締役
+  if (entityType === 'project') return isDirectorLike(member) || member.position === 'manager'; // 部長・取締役
   return true; // decision: 担当部署全員（ログイン者）
 }
 

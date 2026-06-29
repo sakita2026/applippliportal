@@ -1,130 +1,103 @@
 /**
  * src/middleware.ts のルート保護ロジックのユニットテスト
  *
- * Next.js の NextRequest / NextResponse を最小限のモックで再現し、
- * middleware 関数の分岐を検証する。
+ * セッションは署名付きトークン（verifySession）で検証する。
+ * verifySession をモックし、middleware の分岐（通過 / SSOリダイレクト / API 401）を検証する。
  */
 
 import { middleware } from '@/middleware';
 
-// ---------------------------------------------------------------------------
-// NextRequest / NextResponse の最小モック
-// ---------------------------------------------------------------------------
+// verifySession: cookie 値が 'valid' の時だけ正当なセッションを返す
+jest.mock('@/lib/session', () => ({
+  verifySession: jest.fn(async (token?: string | null) =>
+    token === 'valid' ? { username: 'arita-h', name: '有田' } : null,
+  ),
+}));
 
-function makeRequest(pathname: string, hasCookie: boolean): Parameters<typeof middleware>[0] {
+function makeRequest(pathname: string, cookieValue: string | null): Parameters<typeof middleware>[0] {
   const url = `http://localhost:3000${pathname}`;
-
-  const cookies = {
-    get: (name: string) =>
-      name === 'workportal_auth' && hasCookie
-        ? { name: 'workportal_auth', value: 'token123' }
-        : undefined,
-  };
-
   return {
-    cookies,
+    cookies: {
+      get: (name: string) =>
+        name === 'workportal_auth' && cookieValue ? { name, value: cookieValue } : undefined,
+    },
+    headers: new Headers(),
     nextUrl: new URL(url),
     url,
   } as unknown as Parameters<typeof middleware>[0];
 }
 
-// NextResponse のスパイ用モック
 const mockRedirectFn = jest.fn();
 const mockNextFn = jest.fn();
+const mockJsonFn = jest.fn();
 
 jest.mock('next/server', () => ({
   NextResponse: {
-    redirect: (url: URL) => {
-      mockRedirectFn(url.pathname);
-      return { type: 'redirect', destination: url.pathname };
+    redirect: (dest: string) => {
+      mockRedirectFn(dest);
+      return { type: 'redirect', destination: dest };
     },
-    next: () => {
-      mockNextFn();
+    next: (init?: unknown) => {
+      mockNextFn(init);
       return { type: 'next' };
+    },
+    json: (body: unknown, init?: { status?: number }) => {
+      mockJsonFn(body, init?.status);
+      return { type: 'json', status: init?.status, body };
     },
   },
 }));
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-describe('middleware — ルート保護ロジック', () => {
+describe('middleware — ルート保護ロジック（署名付きセッション）', () => {
   beforeEach(() => {
     mockRedirectFn.mockClear();
     mockNextFn.mockClear();
+    mockJsonFn.mockClear();
   });
 
-  describe('未認証ユーザー (cookie なし)', () => {
-    it('保護されたページ (/dashboard) にアクセスすると /login にリダイレクトされる', () => {
-      const req = makeRequest('/dashboard', false);
-      middleware(req);
-      expect(mockRedirectFn).toHaveBeenCalledWith('/login');
+  describe('未認証（無効/欠落トークン）', () => {
+    it('保護ページ (/dashboard) は SSO(authorize) へリダイレクトされる', async () => {
+      await middleware(makeRequest('/dashboard', null));
+      expect(mockRedirectFn).toHaveBeenCalledTimes(1);
+      expect(mockRedirectFn.mock.calls[0][0]).toContain('/authorize');
       expect(mockNextFn).not.toHaveBeenCalled();
     });
 
-    it('保護されたページ (/todos) にアクセスすると /login にリダイレクトされる', () => {
-      const req = makeRequest('/todos', false);
-      middleware(req);
-      expect(mockRedirectFn).toHaveBeenCalledWith('/login');
+    it('偽装/不正トークンでも通過できない（SSOへ）', async () => {
+      await middleware(makeRequest('/dashboard', 'garbage_xyz'));
+      expect(mockRedirectFn).toHaveBeenCalledTimes(1);
+      expect(mockNextFn).not.toHaveBeenCalled();
     });
 
-    it('保護されたページ (/calendar) にアクセスすると /login にリダイレクトされる', () => {
-      const req = makeRequest('/calendar', false);
-      middleware(req);
-      expect(mockRedirectFn).toHaveBeenCalledWith('/login');
-    });
-
-    it('/login ページへのアクセスはリダイレクトされない（通過する）', () => {
-      const req = makeRequest('/login', false);
-      middleware(req);
+    it('API (/api/decisions) は 401 を返す（リダイレクトしない）', async () => {
+      await middleware(makeRequest('/api/decisions', null));
+      expect(mockJsonFn).toHaveBeenCalledWith(expect.anything(), 401);
       expect(mockRedirectFn).not.toHaveBeenCalled();
-      expect(mockNextFn).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe('認証済みユーザー (cookie あり)', () => {
-    it('保護されたページ (/dashboard) に正常にアクセスできる', () => {
-      const req = makeRequest('/dashboard', true);
-      middleware(req);
-      expect(mockRedirectFn).not.toHaveBeenCalled();
-      expect(mockNextFn).toHaveBeenCalledTimes(1);
-    });
-
-    it('保護されたページ (/todos) に正常にアクセスできる', () => {
-      const req = makeRequest('/todos', true);
-      middleware(req);
-      expect(mockRedirectFn).not.toHaveBeenCalled();
-      expect(mockNextFn).toHaveBeenCalledTimes(1);
-    });
-
-    it('/login ページにアクセスすると /dashboard にリダイレクトされる', () => {
-      const req = makeRequest('/login', true);
-      middleware(req);
-      expect(mockRedirectFn).toHaveBeenCalledWith('/dashboard');
       expect(mockNextFn).not.toHaveBeenCalled();
     });
   });
 
-  describe('レスポンス型の確認', () => {
-    it('未認証で保護ページへのアクセスは redirect レスポンスを返す', () => {
-      const req = makeRequest('/dashboard', false);
-      const res = middleware(req) as unknown as { type: string; destination: string };
-      expect(res.type).toBe('redirect');
-      expect(res.destination).toBe('/login');
+  describe('認証済み（有効トークン）', () => {
+    it('保護ページに通過し、検証済みユーザー名をヘッダに付与する', async () => {
+      await middleware(makeRequest('/dashboard', 'valid'));
+      expect(mockRedirectFn).not.toHaveBeenCalled();
+      expect(mockNextFn).toHaveBeenCalledTimes(1);
+      const init = mockNextFn.mock.calls[0][0] as { request: { headers: Headers } };
+      expect(init.request.headers.get('x-wp-user')).toBe('arita-h');
     });
 
-    it('認証済みで通常ページへのアクセスは next レスポンスを返す', () => {
-      const req = makeRequest('/dashboard', true);
-      const res = middleware(req) as { type: string };
-      expect(res.type).toBe('next');
+    it('API も通過する', async () => {
+      await middleware(makeRequest('/api/decisions', 'valid'));
+      expect(mockJsonFn).not.toHaveBeenCalled();
+      expect(mockNextFn).toHaveBeenCalledTimes(1);
     });
 
-    it('認証済みで /login へのアクセスは /dashboard への redirect を返す', () => {
-      const req = makeRequest('/login', true);
-      const res = middleware(req) as unknown as { type: string; destination: string };
-      expect(res.type).toBe('redirect');
-      expect(res.destination).toBe('/dashboard');
+    it('クライアントが偽装した x-wp-user ヘッダは上書き/削除される', async () => {
+      const req = makeRequest('/dashboard', 'valid');
+      (req.headers as Headers).set('x-wp-user', 'admin-spoof');
+      await middleware(req);
+      const init = mockNextFn.mock.calls[0][0] as { request: { headers: Headers } };
+      expect(init.request.headers.get('x-wp-user')).toBe('arita-h');
     });
   });
 });

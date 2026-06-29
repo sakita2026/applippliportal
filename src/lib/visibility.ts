@@ -5,6 +5,66 @@ export function isDirectorPlus(u?: Member | null): boolean {
   return !!u && (!!u.isDirector || !!u.isRepresentative);
 }
 
+/**
+ * 実行タスク（決定事項由来）の編集・ステータス変更ができるか。
+ * 担当者(who) ＋ 担当部長（対象部署の部長）＋ 取締役（代表取締役含む）のみ。
+ * deptOverride に決定事項の部門を渡すと、タスク部門が無い時のフォールバックに使う。
+ */
+export type ManageActor = { username: string; position?: string | null; departmentId?: string | null; isDirector?: boolean | null; isRepresentative?: boolean | null } | null | undefined;
+
+export function canManageDecisionTask(
+  t: { who?: string | null; departmentId?: string | null; createdBy?: string | null },
+  u: ManageActor,
+  decisionDepartmentId?: string | null,
+  opts?: { includeCreator?: boolean },
+): boolean {
+  if (!u) return false;
+  if (u.isDirector || u.isRepresentative) return true;                 // 取締役・代表取締役
+  if (t.who && t.who === u.username) return true;     // 担当者
+  // 編集は入力者（起案者）も可。削除は includeCreator=false で起案者を除外（担当者・担当部長・取締役のみ）。
+  if (opts?.includeCreator !== false && t.createdBy && t.createdBy === u.username) return true; // 入力者（起案者）
+  const dept = t.departmentId ?? decisionDepartmentId ?? null; // 担当部署
+  if (u.position === 'manager' && u.departmentId && dept === u.departmentId) return true; // 担当部長
+  return false;
+}
+
+/**
+ * 決定事項の編集・削除ができるか。
+ * 入力者(起案者=createdBy) ＋ 担当者(assigneeUsername) ＋ 担当部長 ＋ 取締役（代表取締役含む）のみ。
+ * 担当部長＝決定の部門の部長。全社通達(departmentId='all')は部門が無いため「担当者の部署の部長」を担当部長とみなす。
+ * assigneeDepartmentId に担当者の所属部門を渡すこと（全社通達の担当部長判定用）。
+ */
+export function canManageDecision(
+  d: { createdBy?: string | null; assigneeUsername?: string | null; departmentId?: string | null },
+  u: ManageActor,
+  assigneeDepartmentId?: string | null,
+): boolean {
+  if (!u) return false;
+  if (u.isDirector || u.isRepresentative) return true;                       // 取締役・代表取締役
+  if (d.createdBy && d.createdBy === u.username) return true;                 // 入力者（起案者）
+  if (d.assigneeUsername && d.assigneeUsername === u.username) return true;   // 担当者
+  const dept = d.departmentId && d.departmentId !== 'all' ? d.departmentId : (assigneeDepartmentId ?? null);
+  if (u.position === 'manager' && u.departmentId && dept && dept === u.departmentId) return true; // 担当部長
+  return false;
+}
+
+/**
+ * 個人タスク（Todo）の編集・ステータス変更ができるか。
+ * 担当者＝所有者(userId) ＋ 担当部長（所有者の部署の部長）＋ 取締役。
+ */
+export function canManageTodo(
+  todo: { userId?: string | null; departmentId?: string | null },
+  u: ManageActor,
+  ownerDepartmentId?: string | null,
+): boolean {
+  if (!u) return false;
+  if (u.isDirector || u.isRepresentative) return true;
+  if (todo.userId && todo.userId === u.username) return true; // 担当者=所有者
+  const dept = todo.departmentId ?? ownerDepartmentId ?? null;
+  if (u.position === 'manager' && u.departmentId && dept === u.departmentId) return true;
+  return false;
+}
+
 /** 役職に応じた初期表示範囲：取締役以上=全体／部長=自部門／一般社員=自分 */
 export function defaultView(u?: Member | null): View {
   if (isDirectorPlus(u)) return 'all';

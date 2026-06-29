@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getMember, roleFlags, canApprove, isApproved, type EntityType, type ApprovalRow } from '@/lib/approval';
+import { getMember, roleFlags, canApprove, canManageProject, isApproved, type EntityType, type ApprovalRow } from '@/lib/approval';
+import { canManageDecision } from '@/lib/visibility';
 import { writeAudit, entityTitle } from '@/lib/audit';
 
 function getUsername(req: NextRequest): string | null {
-  return req.cookies.get('workportal_auth')?.value ?? null;
+  return req.headers.get('x-wp-user');
 }
 
 async function loadEntity(et: EntityType, id: string) {
@@ -44,9 +45,24 @@ export async function POST(req: NextRequest) {
     boardOnly: !!(entity as { boardOnly?: boolean }).boardOnly,
   };
 
-  // 削除の承認は「承認できる人」と同じ
-  if (!canApprove(member, et, ctx)) {
-    return NextResponse.json({ error: '削除の承認権限がありません' }, { status: 403 });
+  // 削除申請/取消できる人：
+  //  - プロジェクト＝担当部長＋取締役
+  //  - 決定事項＝入力者(起案者)＋担当者＋担当部長＋取締役
+  //  - 方針＝承認できる人（取締役）
+  // ※実削除は isApproved（決定=担当部長＋取締役/全社通達は取締役2名、方針PJ=取締役2名）を満たした時のみ。
+  //   起案者・担当者の記録は承認人数に数えない（roleFlagsでasDirector/asManager=falseのため）。
+  let allowed: boolean;
+  if (et === 'project') {
+    allowed = canManageProject(ctx.departmentId, member);
+  } else if (et === 'decision') {
+    const dec = entity as { createdBy?: string | null; assigneeUsername?: string | null; departmentId?: string | null };
+    const assigneeDept = dec.assigneeUsername ? (await getMember(dec.assigneeUsername))?.departmentId ?? null : null;
+    allowed = canManageDecision(dec, member, assigneeDept);
+  } else {
+    allowed = canApprove(member, et, ctx);
+  }
+  if (!allowed) {
+    return NextResponse.json({ error: '削除の権限がありません' }, { status: 403 });
   }
 
   // 取消

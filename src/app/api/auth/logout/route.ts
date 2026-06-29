@@ -10,5 +10,7 @@ export async function GET(req: NextRequest) {
   const ret = encodeURIComponent(`${origin}/login?loggedout=1`);
   const res = NextResponse.redirect(`${ORGPORTAL_URL}/logout?return=${ret}`);
   res.cookies.set('workportal_auth', '', { path: '/', maxAge: 0 });
+  res.cookies.set('workportal_user', '', { path: '/', maxAge: 0 });
+  res.cookies.set('workportal_admin', '', { path: '/', maxAge: 0 });
   return res;
 }

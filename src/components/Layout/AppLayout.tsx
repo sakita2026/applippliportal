@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Sidebar } from './Sidebar';
 import { useStore } from '@/lib/store';
 
@@ -16,13 +15,14 @@ function LoadingOverlay() {
   );
 }
 
-function ErrorBanner({ message }: { message: string }) {
+function ErrorBanner() {
   return (
     <div className="mx-4 mt-4 px-4 py-3 rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 text-sm flex items-center gap-2">
       <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
       </svg>
-      <span>DB接続エラー: {message}（.env の DATABASE_URL を確認してください）</span>
+      <span className="flex-1">サーバー／データベースに接続できません（一時的な可能性があります）。表示中のデータや直前の入力が反映されていない場合があります。少し待ってから再読み込みしてください。</span>
+      <button onClick={() => window.location.reload()} className="flex-shrink-0 px-3 py-1 rounded-lg bg-rose-500 text-white text-xs font-medium hover:bg-rose-600">再読み込み</button>
     </div>
   );
 }
@@ -34,18 +34,17 @@ function AppContent({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      {state.error && <ErrorBanner message={state.error} />}
+      {state.error && <ErrorBanner />}
       {children}
     </>
   );
 }
 
 function LogoutButton() {
-  const router = useRouter();
-
   const handleLogout = () => {
-    document.cookie = 'workportal_auth=; path=/; max-age=0; SameSite=Lax';
-    router.push('/login');
+    // 署名付き workportal_auth は httpOnly のためJSで消せない。サーバのログアウト(両Cookie破棄+SLO)へ委譲。
+    document.cookie = 'workportal_user=; path=/; max-age=0; SameSite=Lax';
+    window.location.href = '/api/auth/logout';
   };
 
   return (

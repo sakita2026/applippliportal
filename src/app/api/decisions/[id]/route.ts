@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { isAdminUser } from '@/lib/members';
+import { getMember } from '@/lib/approval';
+import { canManageDecision } from '@/lib/visibility';
 import { writeAudit } from '@/lib/audit';
 import { snapshotDecision } from '@/lib/snapshot';
 import { fetchDirectory } from '@/lib/directory';
@@ -12,7 +13,7 @@ const DECISION_INCLUDE = {
 };
 
 function getUsernameFromCookie(req: NextRequest): string | null {
-  return req.cookies.get('workportal_auth')?.value ?? null;
+  return req.headers.get('x-wp-user');
 }
 
 // 編集すると承認はリセットされ、再承認が必要になる
@@ -28,6 +29,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const prevSnap = await snapshotDecision(id);
     // 変更内容（編集前→編集後）を作成（承認者向け）
     const before = await prisma.decision.findUnique({ where: { id }, include: { projects: { include: { project: true } }, policies: { include: { policy: true } } } });
+    // 編集は 入力者(起案者)＋担当者＋担当部長＋取締役 のみ（全社通達の担当部長＝担当者の部署の部長）
+    const actor = await getMember(username);
+    const assigneeDept = before?.assigneeUsername ? (await getMember(before.assigneeUsername))?.departmentId ?? null : null;
+    if (!before || !canManageDecision(before, actor, assigneeDept)) {
+      return NextResponse.json({ error: '編集は入力者・担当者・担当部長・取締役のみ可能です' }, { status: 403 });
+    }
     const changes: { field: string; before: string; after: string }[] = [];
     if (before) {
       if (title !== undefined && title !== before.title) changes.push({ field: '件名', before: before.title, after: title });
@@ -118,6 +125,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
             why: (t.why as string) ?? null, who: (t.who as string) ?? null, whereLoc: (t.whereLoc as string) ?? null,
             whenDue: (t.whenDue as string) ?? null, how: (t.how as string) ?? null, departmentId: (t.departmentId as string) ?? null,
             startDate: (t.startDate as string) ?? null, status: 'todo', sortOrder: order++, pendingEdit: true,
+            createdBy: username ?? null, // 編集で追加されたタスク＝追加した人を作成者に
           },
         }).catch(() => null);
       }
@@ -133,10 +141,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const username = getUsernameFromCookie(req);
-    if (!(await isAdminUser(username))) {
-      return NextResponse.json({ error: '削除は管理者のみ可能です' }, { status: 403 });
-    }
     const { id } = await params;
+    // 削除は 入力者(起案者)＋担当者＋担当部長＋取締役 のみ（全社通達の担当部長＝担当者の部署の部長）
+    const actor = await getMember(username);
+    const dec = await prisma.decision.findUnique({ where: { id }, select: { createdBy: true, assigneeUsername: true, departmentId: true } });
+    const assigneeDept = dec?.assigneeUsername ? (await getMember(dec.assigneeUsername))?.departmentId ?? null : null;
+    if (!dec || !canManageDecision(dec, actor, assigneeDept)) {
+      return NextResponse.json({ error: '削除は入力者・担当者・担当部長・取締役のみ可能です' }, { status: 403 });
+    }
     await prisma.approval.deleteMany({ where: { entityType: 'decision', entityId: id } });
     await prisma.decision.delete({ where: { id } });
     return NextResponse.json({ success: true });

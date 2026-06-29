@@ -10,7 +10,7 @@ const DECISION_INCLUDE = {
 };
 
 function getUsernameFromCookie(req: NextRequest): string | null {
-  return req.cookies.get('workportal_auth')?.value ?? null;
+  return req.headers.get('x-wp-user');
 }
 
 // 通常の決定事項は全員に通達。取締役会限定は取締役会メンバーのみに返す。
@@ -112,6 +112,7 @@ export async function POST(req: NextRequest) {
               departmentId: (t.departmentId as string) ?? null,
               startDate: (t.startDate as string) ?? null,
               status: 'todo',
+              createdBy: username, // 決定と同時作成のタスク＝決定の起案者を作成者に
               sortOrder: i,
             })),
         },

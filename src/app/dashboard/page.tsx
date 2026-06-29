@@ -6,6 +6,8 @@ import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { MyWork } from '@/components/MyWork';
 import { useCurrentUser } from '@/lib/useCurrentUser';
+import { taskVisible, decisionVisible, defaultView } from '@/lib/visibility';
+import { jstToday, jstStartOfDayMs, isOverdueDue } from '@/lib/date';
 
 const PRIORITY_COLORS = {
   high: 'text-rose-500 bg-rose-50 dark:bg-rose-900/20',
@@ -25,18 +27,22 @@ export default function DashboardPage() {
   const { todos: allTodos, events, decisions } = state;
   // 個人タスクは本人のもの（または共有）だけを対象にする
   const todos = allTodos.filter((t) => t.userId === me?.username || t.isShared);
-  const today = new Date().toISOString().split('T')[0];
+  const today = jstToday();
 
-  // 稼働中の決定タスク
+  // 表示範囲（/todos・/decisions と同じ既定スコープ：取締役=全体／部長=自部門／社員=自分）
+  const view = defaultView(me);
+  // 稼働中の決定タスク（自分が見える範囲だけ＝/todos と一致）
   const activeTasks = decisions
     .filter((d) => d.everApproved)
-    .flatMap((d) => d.tasks.filter((t) => !t.pendingEdit));
+    .flatMap((d) => d.tasks.filter((t) => !t.pendingEdit && taskVisible(d, t, view, me)));
+  // 表示範囲内の決定事項
+  const visibleDecisions = decisions.filter((d) => decisionVisible(d, view, me));
 
   // 期限超過：実行タスク（個人タスク＋決定タスク）／決定事項
   const overdueTaskCount =
-    todos.filter((t) => t.status !== 'done' && t.dueDate && t.dueDate < today).length +
-    activeTasks.filter((t) => t.status !== 'done' && t.whenDue && t.whenDue < today).length;
-  const overdueDecisionCount = decisions.filter((d) => d.status !== 'done' && d.dueDate && d.dueDate < today).length;
+    todos.filter((t) => t.status !== 'done' && isOverdueDue(t.dueDate)).length +
+    activeTasks.filter((t) => t.status !== 'done' && isOverdueDue(t.whenDue)).length;
+  const overdueDecisionCount = visibleDecisions.filter((d) => d.status !== 'done' && isOverdueDue(d.dueDate)).length;
 
   const overdueIcon = (
     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -52,6 +58,7 @@ export default function DashboardPage() {
       icon: overdueIcon,
       bg: 'bg-rose-50 dark:bg-rose-900/20',
       iconColor: 'text-rose-500',
+      note: '完了予定日の15:00を過ぎると超過になります',
     },
     {
       title: '期限超過（決定事項）',
@@ -60,36 +67,35 @@ export default function DashboardPage() {
       icon: overdueIcon,
       bg: 'bg-rose-50 dark:bg-rose-900/20',
       iconColor: 'text-rose-500',
+      note: '完了予定日の15:00を過ぎると超過になります',
     },
   ];
 
-  // 完了集計（本日・今週・今月・今年）— 個人タスク＋決定タスクの completedAt を期間でカウント
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const dow = (now.getDay() + 6) % 7; // 月曜=0
+  // 完了集計（本日・今週・今月・今年）— 個人タスク＋決定タスクの completedAt を JST 期間でカウント
+  const [jy, jm] = today.split('-').map(Number); // today は JST 'YYYY-MM-DD'
+  const startOfToday = jstStartOfDayMs(today);
+  // 月曜=0 とする JST の曜日
+  const dow = (new Date(`${today}T12:00:00+09:00`).getUTCDay() + 6) % 7;
   const startOfWeek = startOfToday - dow * 86400000;
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-  const startOfYear = new Date(now.getFullYear(), 0, 1).getTime();
+  const startOfMonth = jstStartOfDayMs(`${jy}-${String(jm).padStart(2, '0')}-01`);
+  const startOfYear = jstStartOfDayMs(`${jy}-01-01`);
   const completedTimes: number[] = [];
   for (const t of todos) {
     if (t.status === 'done' && t.completedAt) completedTimes.push(new Date(t.completedAt).getTime());
   }
-  for (const d of decisions) {
-    if (!d.everApproved) continue;
-    for (const t of d.tasks) {
-      if (t.status === 'done' && t.completedAt) completedTimes.push(new Date(t.completedAt).getTime());
-    }
+  for (const t of activeTasks) {
+    if (t.status === 'done' && t.completedAt) completedTimes.push(new Date(t.completedAt).getTime());
   }
   const periodCounts = (times: number[]) => [
-    { label: '本日', value: times.filter((ms) => ms >= startOfToday).length },
-    { label: '今週', value: times.filter((ms) => ms >= startOfWeek).length },
-    { label: '今月', value: times.filter((ms) => ms >= startOfMonth).length },
-    { label: '今年', value: times.filter((ms) => ms >= startOfYear).length },
+    { label: '本日', value: times.filter((ms) => ms >= startOfToday).length, period: 'today' },
+    { label: '今週', value: times.filter((ms) => ms >= startOfWeek).length, period: 'week' },
+    { label: '今月', value: times.filter((ms) => ms >= startOfMonth).length, period: 'month' },
+    { label: '今年', value: times.filter((ms) => ms >= startOfYear).length, period: 'year' },
   ];
   const completedCounts = periodCounts(completedTimes);
   // 完了決定事項（status='done' の決定を completedAt で期間集計）
   const completedDecisionTimes: number[] = [];
-  for (const d of decisions) {
+  for (const d of visibleDecisions) {
     if (d.status === 'done' && d.completedAt) completedDecisionTimes.push(new Date(d.completedAt).getTime());
   }
   const completedDecisionCounts = periodCounts(completedDecisionTimes);
@@ -101,12 +107,8 @@ export default function DashboardPage() {
         <p className="text-sm text-slate-500 dark:text-slate-400">
           {format(new Date(), 'yyyy年M月d日（E）', { locale: ja })}
         </p>
-        <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-slate-100 mt-1">
-          おはようございます 👋
-        </h1>
       </div>
 
-      {/* 今日やること（自分・自部門の未完了＋承認待ち・リアルタイム） */}
       <MyWork />
 
       {/* 完了実行タスク（本日・今週・今月・今年） */}
@@ -116,15 +118,15 @@ export default function DashboardPage() {
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {completedCounts.map((c) => (
-            <div key={c.label} className="rounded-2xl p-4 sm:p-5 border" style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(12px)' }}>
-              <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500 flex items-center justify-center mb-3">
+            <Link key={c.label} href={`/todos?status=done&period=${c.period}`} className="rounded-2xl p-4 sm:p-5 border transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 block" style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(12px)' }}>
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 flex items-center justify-center mb-3">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
               <p className="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-slate-100">{c.value}</p>
               <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">{c.label}</p>
-            </div>
+            </Link>
           ))}
         </div>
       </div>
@@ -136,7 +138,7 @@ export default function DashboardPage() {
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {completedDecisionCounts.map((c) => (
-            <div key={c.label} className="rounded-2xl p-4 sm:p-5 border" style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(12px)' }}>
+            <Link key={c.label} href={`/decisions?status=done&period=${c.period}`} className="rounded-2xl p-4 sm:p-5 border transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 block" style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(12px)' }}>
               <div className="w-10 h-10 rounded-xl bg-sky-50 dark:bg-sky-900/20 text-sky-500 flex items-center justify-center mb-3">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -144,7 +146,7 @@ export default function DashboardPage() {
               </div>
               <p className="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-slate-100">{c.value}</p>
               <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">{c.label}</p>
-            </div>
+            </Link>
           ))}
         </div>
       </div>
@@ -163,6 +165,7 @@ export default function DashboardPage() {
             </div>
             <p className="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-slate-100">{card.value}</p>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">{card.title}</p>
+            {card.note && <p className="text-[11px] text-rose-500 mt-1 leading-tight">{card.note}</p>}
           </Link>
         ))}
       </div>

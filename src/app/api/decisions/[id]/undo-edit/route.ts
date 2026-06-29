@@ -13,7 +13,7 @@ const DECISION_INCLUDE = {
 // 編集の取り消し（承認待ちの間のみ）。承認後（approved）は不可。部長以上のみ。
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const username = req.cookies.get('workportal_auth')?.value ?? null;
+  const username = req.headers.get('x-wp-user');
   const member = await getMember(username);
   if (!member) return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
   const d = await prisma.decision.findUnique({ where: { id } });

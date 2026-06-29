@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getMember, canCreate } from '@/lib/approval';
+import { getMember, canCreate, isDirectorLike } from '@/lib/approval';
 import { writeAudit } from '@/lib/audit';
 import { snapshotPolicy } from '@/lib/snapshot';
 
 function getUsername(req: NextRequest): string | null {
-  return req.cookies.get('workportal_auth')?.value ?? null;
+  return req.headers.get('x-wp-user');
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -43,7 +43,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  if (!getUsername(req)) return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
+  // 直接削除は取締役のみ（通常は削除申請→取締役2名承認の /api/deletions 経由）
+  const member = await getMember(getUsername(req));
+  if (!member) return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
+  if (!isDirectorLike(member)) return NextResponse.json({ error: '削除は取締役のみ可能です' }, { status: 403 });
   const { id } = await params;
   await prisma.approval.deleteMany({ where: { entityType: 'policy', entityId: id } });
   await prisma.policy.delete({ where: { id } });

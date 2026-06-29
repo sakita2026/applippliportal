@@ -13,6 +13,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
+  const [errorCode, setErrorCode] = useState<string | null>(null)
   const [redirecting, setRedirecting] = useState(false)
 
   const goToSso = () => {
@@ -20,10 +21,16 @@ export default function LoginPage() {
     window.location.href = `${ORGPORTAL_URL}/authorize?app=workportal&return=${ret}`
   }
 
+  const logout = () => {
+    // 利用権が無いユーザーは再ログインしても無意味なので、組織ポータルへは誘導せずログアウト。
+    window.location.href = '/api/auth/logout'
+  }
+
   useEffect(() => {
     const err = new URLSearchParams(window.location.search).get('error')
     if (err) {
       // 権限エラー等はループ防止のため自動転送せずメッセージ表示
+      setErrorCode(err)
       setError(ERROR_MESSAGES[err] ?? '認証でエラーが発生しました。')
       return
     }
@@ -54,11 +61,20 @@ export default function LoginPage() {
               borderRadius: '10px', color: '#dc2626', fontSize: '13px', lineHeight: 1.6 }}>
               {error}
             </div>
-            <button onClick={goToSso} style={{ marginTop: '18px', width: '100%', padding: '13px', border: 'none', borderRadius: '10px',
-              fontSize: '14px', fontWeight: 700, cursor: 'pointer', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff',
-              boxShadow: '0 4px 16px rgba(99,102,241,0.35)' }}>
-              組織ポータルでログインし直す
-            </button>
+            {errorCode === 'no_access' ? (
+              // 利用権が無い人は組織ポータルへは誘導しない（管理者以外に組織ポータルを出さない）。ログアウトのみ。
+              <button onClick={logout} style={{ marginTop: '18px', width: '100%', padding: '13px', border: 'none', borderRadius: '10px',
+                fontSize: '14px', fontWeight: 700, cursor: 'pointer', background: '#475569', color: '#fff',
+                boxShadow: '0 4px 16px rgba(71,85,105,0.35)' }}>
+                ログアウト
+              </button>
+            ) : (
+              <button onClick={goToSso} style={{ marginTop: '18px', width: '100%', padding: '13px', border: 'none', borderRadius: '10px',
+                fontSize: '14px', fontWeight: 700, cursor: 'pointer', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff',
+                boxShadow: '0 4px 16px rgba(99,102,241,0.35)' }}>
+                組織ポータルでログインし直す
+              </button>
+            )}
           </>
         ) : (
           <p style={{ marginTop: '20px', fontSize: '13px', color: '#64748b' }}>

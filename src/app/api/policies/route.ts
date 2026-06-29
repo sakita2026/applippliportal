@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getMember, canCreate } from '@/lib/approval';
 
 function getUsername(req: NextRequest): string | null {
-  return req.cookies.get('workportal_auth')?.value ?? null;
+  return req.headers.get('x-wp-user');
 }
 
 export async function GET(req: NextRequest) {

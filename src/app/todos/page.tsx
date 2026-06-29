@@ -3,13 +3,14 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useStore, PRIORITY_LABELS, STATUS_LABELS, resolveMemberName } from '@/lib/store';
+import { jstToday, jstDateStr, isOverdueDue, jstPeriodStartMs, type Period } from '@/lib/date';
 import type { Priority, TodoStatus, Todo, TodoStep, DecisionTask } from '@/types';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { getDepartmentName } from '@/lib/departments';
 import { ScopeControl } from '@/components/ScopeControl';
-import { taskVisible, defaultView, type View } from '@/lib/visibility';
+import { taskVisible, defaultView, canManageDecisionTask, canManageTodo, type View } from '@/lib/visibility';
 
 const PRIORITY_COLORS: Record<Priority, string> = {
   high: 'text-rose-500 bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800',
@@ -60,6 +61,11 @@ function TodoForm({
   const [how, setHow] = useState(initial?.how ?? '');
   const [isShared, setIsShared] = useState(initial?.isShared ?? false);
   const [saving, setSaving] = useState(false);
+  // 所有者（担当/部門の基準）。新規=ログイン者、編集=元の所有者。編集者で上書きしない。
+  const ownerUsername = initial?.userId ?? me?.username ?? null;
+  const ownerMember = ownerUsername ? state.members.find((m) => m.username === ownerUsername) : null;
+  const ownerName = ownerMember?.name ?? (ownerUsername ? resolveMemberName(state.members, ownerUsername) : '自分');
+  const ownerDeptId = ownerMember?.departmentId ?? (initial ? initial.departmentId : me?.departmentId) ?? null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,7 +74,10 @@ function TodoForm({
     await onSave(
       {
         title: title.trim(), priority, status, dueDate: dueDate || undefined,
-        startDate: startDate || undefined, who: me?.username || undefined, departmentId: me?.departmentId || undefined,
+        startDate: startDate || undefined,
+        // 新規は作成者(me)、編集は元の値を保持（編集者で上書きしない）
+        who: initial?.id ? (initial.who ?? undefined) : (me?.username || undefined),
+        departmentId: initial?.id ? (initial.departmentId ?? undefined) : (me?.departmentId || undefined),
         whereLoc: whereLoc.trim() || undefined, why: why.trim() || undefined, how: how.trim() || undefined,
         isShared,
       },
@@ -105,10 +114,10 @@ function TodoForm({
             style={{ borderColor: 'var(--border-color)' }}
           />
 
-          {/* 担当・部門は自分（ログインユーザー）固定。テキスト表示のみ。 */}
+          {/* 担当・部門は「所有者（作成者）」基準で表示（編集者ではない）。 */}
           <div className="flex flex-wrap gap-3 text-xs text-slate-500 dark:text-slate-400 px-1">
-            <span>担当: <span className="font-medium text-slate-700 dark:text-slate-200">{me?.name ?? '自分'}</span></span>
-            <span>部門: <span className="font-medium text-slate-700 dark:text-slate-200">{me?.departmentId ? getDepartmentName(me.departmentId, state.departments) : '（未設定）'}</span></span>
+            <span>担当: <span className="font-medium text-slate-700 dark:text-slate-200">{ownerName}</span></span>
+            <span>部門: <span className="font-medium text-slate-700 dark:text-slate-200">{ownerDeptId ? getDepartmentName(ownerDeptId, state.departments) : '（未設定）'}</span></span>
           </div>
 
           {/* 5W1H（担当・部門は自分固定） */}
@@ -200,11 +209,14 @@ function TodoItem({ todo, onEdit, onDelete, onToggle, currentUsername }: {
 }) {
   const { state, updateTodo } = useStore();
   const [stepsOpen, setStepsOpen] = useState(false);
-  const today = new Date().toISOString().split('T')[0];
-  const isOverdue = todo.status !== 'done' && todo.dueDate && todo.dueDate < today;
+  const isOverdue = todo.status !== 'done' && isOverdueDue(todo.dueDate);
   const steps: TodoStep[] = []; // 工程は廃止（表示しない）
   const isOwnTask = !todo.userId || todo.userId === currentUsername;
   const ownerName = todo.userId ? resolveMemberName(state.members, todo.userId) : null;
+  const me = state.members.find((m) => m.username === currentUsername) ?? null;
+  const ownerDeptId = todo.userId ? (state.members.find((m) => m.username === todo.userId)?.departmentId ?? null) : null;
+  // 編集・ステータス変更は 担当者(所有者)＋担当部長＋取締役 のみ
+  const canEdit = canManageTodo(todo, me, ownerDeptId);
   const doneCount = steps.filter((s) => s.done).length;
   const hasSteps = steps.length > 0;
   const progress = hasSteps ? (doneCount / steps.length) * 100 : 0;
@@ -222,11 +234,13 @@ function TodoItem({ todo, onEdit, onDelete, onToggle, currentUsername }: {
         {/* Checkbox */}
         <button
           onClick={() => onToggle(todo)}
+          disabled={!canEdit}
+          title={!canEdit ? '担当者・担当部長・取締役のみ変更できます' : undefined}
           className={`w-5 h-5 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center transition-all ${
             todo.status === 'done'
               ? 'bg-emerald-400 border-emerald-400'
               : 'border-slate-300 dark:border-slate-600 hover:border-indigo-400'
-          }`}
+          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           {todo.status === 'done' && (
             <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -284,6 +298,7 @@ function TodoItem({ todo, onEdit, onDelete, onToggle, currentUsername }: {
           )}
 
           <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+            {ownerName && <span>作成者: {ownerName}</span>}
             {todo.who && <span>担当: {resolveMemberName(state.members, todo.who)}</span>}
             {todo.departmentId && <span>部門: {getDepartmentName(todo.departmentId, state.departments)}</span>}
             {todo.startDate && <span>開始: {todo.startDate.slice(5)}</span>}
@@ -309,13 +324,14 @@ function TodoItem({ todo, onEdit, onDelete, onToggle, currentUsername }: {
             </span>
           </div>
 
-          {/* ステータス切替（未着手／進行中／完了） */}
+          {/* ステータス切替（担当者・担当部長・取締役のみ） */}
           <div className="flex gap-1 mt-2">
             {(['todo', 'in_progress', 'done'] as TodoStatus[]).map((s) => (
-              <button key={s} onClick={() => { if (s !== todo.status) updateTodo({ ...todo, status: s }); }}
+              <button key={s} disabled={!canEdit} onClick={() => { if (canEdit && s !== todo.status) updateTodo({ ...todo, status: s }); }}
+                title={!canEdit ? '担当者・担当部長・取締役のみ変更できます' : undefined}
                 className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
                   todo.status === s ? 'bg-indigo-500 text-white' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}>
+                } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}>
                 {STATUS_LABELS[s]}
               </button>
             ))}
@@ -324,18 +340,22 @@ function TodoItem({ todo, onEdit, onDelete, onToggle, currentUsername }: {
 
         {/* Actions */}
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+          {canEdit && (
           <button onClick={() => onEdit(todo)}
             className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-slate-400 hover:text-indigo-500 transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
           </button>
+          )}
+          {canEdit && (
           <button onClick={() => onDelete(todo.id)}
             className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-900/20 text-slate-400 hover:text-rose-500 transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
           </button>
+          )}
         </div>
       </div>
 
@@ -372,7 +392,7 @@ function TodoItem({ todo, onEdit, onDelete, onToggle, currentUsername }: {
 type FilterView = 'mine' | 'shared';
 type FilterType = 'all' | 'todo' | 'decision';
 
-type ActiveDecisionTask = DecisionTask & { decisionTitle: string; boardOnly?: boolean };
+type ActiveDecisionTask = DecisionTask & { decisionTitle: string; boardOnly?: boolean; decisionCreatedBy?: string | null; decisionDepartmentId?: string | null };
 
 const DT_STATUS: TodoStatus[] = ['todo', 'in_progress', 'done'];
 
@@ -380,9 +400,11 @@ const DT_STATUS: TodoStatus[] = ['todo', 'in_progress', 'done'];
 function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
   const { state, updateDecisionTask, editDecisionTask, undoEditTask } = useStore();
   const me = useCurrentUser();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false);      // 第1段：決定事項を表示
+  const [taskOpen, setTaskOpen] = useState(false); // 第2段：5W1H（実行タスク詳細）を表示
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [editErr, setEditErr] = useState('');
   const [draft, setDraft] = useState({
     what: task.what, why: task.why ?? '', who: task.who ?? '', whereLoc: task.whereLoc ?? '',
     whenDue: task.whenDue ?? '', how: task.how ?? '', departmentId: task.departmentId ?? '', startDate: task.startDate ?? '',
@@ -391,8 +413,9 @@ function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
   const [polList, setPolList] = useState<{ id: string; name: string }[]>([]);
   const [selProjects, setSelProjects] = useState<string[]>(task.projects?.map((p) => p.projectId) ?? []);
   const [selPolicies, setSelPolicies] = useState<string[]>(task.policies?.map((p) => p.policyId) ?? []);
-  const today = new Date().toISOString().split('T')[0];
-  const isOverdue = task.status !== 'done' && task.whenDue && task.whenDue < today;
+  const isOverdue = task.status !== 'done' && isOverdueDue(task.whenDue);
+  // 編集・ステータス変更は 担当者＋担当部長＋取締役 のみ
+  const canEdit = canManageDecisionTask(task, me, task.decisionDepartmentId);
   const efld = 'w-full px-2 py-1.5 rounded-lg border text-xs bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-400';
 
   const startEdit = () => {
@@ -415,16 +438,23 @@ function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
   const saveEdit = async () => {
     if (busy || !draft.what.trim()) return;
     setBusy(true);
-    await editDecisionTask(task.decisionId, {
-      ...task,
-      what: draft.what.trim(), why: draft.why.trim() || undefined, who: draft.who || undefined,
-      whereLoc: draft.whereLoc.trim() || undefined, whenDue: draft.whenDue || undefined,
-      how: draft.how.trim() || undefined, departmentId: draft.departmentId || undefined,
-      startDate: draft.startDate || undefined,
-      projectIds: selProjects, policyIds: selPolicies,
-    } as DecisionTask & { projectIds: string[]; policyIds: string[] }).catch(() => null);
-    setBusy(false);
-    setEditing(false);
+    setEditErr('');
+    try {
+      await editDecisionTask(task.decisionId, {
+        ...task,
+        what: draft.what.trim(), why: draft.why.trim() || undefined, who: draft.who || undefined,
+        whereLoc: draft.whereLoc.trim() || undefined, whenDue: draft.whenDue || undefined,
+        how: draft.how.trim() || undefined, departmentId: draft.departmentId || undefined,
+        startDate: draft.startDate || undefined,
+        projectIds: selProjects, policyIds: selPolicies,
+      } as DecisionTask & { projectIds: string[]; policyIds: string[] });
+      setEditing(false);
+    } catch {
+      // 失敗を握りつぶさず明示（再承認にならない等の無言失敗を防ぐ）
+      setEditErr('保存に失敗しました。時間をおいて再度お試しください（変更は反映されていません）。');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -434,9 +464,11 @@ function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
         {/* 完了トグル */}
         <button
           onClick={() => changeStatus(task.status === 'done' ? 'todo' : 'done')}
+          disabled={!canEdit || busy}
+          title={!canEdit ? '担当者・担当部長・取締役のみ変更できます' : undefined}
           className={`w-5 h-5 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center transition-all ${
             task.status === 'done' ? 'bg-emerald-400 border-emerald-400' : 'border-slate-300 dark:border-slate-600 hover:border-indigo-400'
-          }`}
+          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           {task.status === 'done' && (
             <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -446,7 +478,7 @@ function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
         </button>
 
         <div className="flex-1 min-w-0">
-          <button onClick={() => setOpen((o) => !o)} className="flex flex-wrap items-center gap-2 mb-1 text-left w-full">
+          <button onClick={() => setOpen((o) => { const next = !o; if (!next) { setTaskOpen(false); setEditing(false); } return next; })} className="flex flex-wrap items-center gap-2 mb-1 text-left w-full">
             <span className={`text-sm font-medium ${task.status === 'done' ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-100'}`}>
               {task.what}
             </span>
@@ -490,6 +522,8 @@ function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
             )}
             {task.who && <span>担当: {resolveMemberName(state.members, task.who)}</span>}
             {task.departmentId && <span>部門: {getDepartmentName(task.departmentId, state.departments)}</span>}
+            {task.decisionCreatedBy && <span>決定作成: {resolveMemberName(state.members, task.decisionCreatedBy)}</span>}
+            {task.createdBy && <span>タスク作成: {resolveMemberName(state.members, task.createdBy)}</span>}
           </div>
           {((task.policies && task.policies.length > 0) || (task.projects && task.projects.length > 0)) && (
             <div className="flex flex-wrap gap-1 mt-1">
@@ -498,31 +532,45 @@ function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
             </div>
           )}
 
-          {/* ステータス切替 */}
+          {/* ステータス切替（担当者・担当部長・取締役のみ） */}
           <div className="flex gap-1 mt-2">
             {DT_STATUS.map((s) => (
-              <button key={s} onClick={() => changeStatus(s)} disabled={busy}
+              <button key={s} onClick={() => changeStatus(s)} disabled={busy || !canEdit}
+                title={!canEdit ? '担当者・担当部長・取締役のみ変更できます' : undefined}
                 className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
                   task.status === s ? 'bg-indigo-500 text-white' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}>
+                } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}>
                 {STATUS_LABELS[s]}
               </button>
             ))}
           </div>
 
-          {/* 5W1H 詳細 / 編集 */}
-          {open && !editing && (
+          {/* 第1段：決定事項 */}
+          {open && (
             <div className="mt-2 pt-2 border-t text-xs text-slate-500 dark:text-slate-400 space-y-1" style={{ borderColor: 'var(--border-color)' }}>
               <p>決定事項: <Link href="/decisions" className="text-indigo-500 hover:underline">{task.decisionTitle}</Link></p>
-              {task.startDate && <p>開始日: {task.startDate}</p>}
-              {task.whenDue && <p>完了予定日: {task.whenDue}</p>}
-              {task.why && <p>なぜ: {task.why}</p>}
-              {task.whereLoc && <p>どこで: {task.whereLoc}</p>}
-              {task.how && <p>どうやって: {task.how}</p>}
-              <button onClick={startEdit} className="text-indigo-500 hover:underline mt-1">5W1H・方針・プロジェクトを編集（編集すると再承認になります）</button>
+              {task.decisionCreatedBy && <p>決定事項作成者: {resolveMemberName(state.members, task.decisionCreatedBy)}</p>}
+              {/* 第2段トグル：5W1H（実行タスク）。決定事項は残したまま展開 */}
+              <button onClick={() => setTaskOpen((o) => !o)} className="flex items-center gap-1 text-indigo-500 hover:underline mt-1">
+                5W1H（実行タスク）を{taskOpen ? '閉じる' : '表示'}
+                <svg className={`w-3 h-3 transition-transform ${taskOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              {taskOpen && !editing && (
+                <div className="mt-1 pl-3 border-l-2 space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                  {task.startDate && <p>開始日: {task.startDate}</p>}
+                  {task.whenDue && <p>完了予定日: {task.whenDue}</p>}
+                  {task.why && <p>なぜ: {task.why}</p>}
+                  {task.whereLoc && <p>どこで: {task.whereLoc}</p>}
+                  {task.how && <p>どうやって: {task.how}</p>}
+                  {task.createdBy && <p>実行タスク作成者: {resolveMemberName(state.members, task.createdBy)}</p>}
+                  {canEdit
+                    ? <button onClick={startEdit} className="text-indigo-500 hover:underline mt-1">5W1H・方針・プロジェクトを編集（編集すると再承認になります）</button>
+                    : <p className="text-slate-400 mt-1">編集は担当者・担当部長・取締役のみ可能です</p>}
+                </div>
+              )}
             </div>
           )}
-          {open && editing && (
+          {open && taskOpen && editing && (
             <div className="mt-2 pt-2 border-t space-y-2" style={{ borderColor: 'var(--border-color)' }}>
               <input className={efld} style={{ borderColor: 'var(--border-color)' }} placeholder="何を *" value={draft.what} onChange={(e) => setDraft({ ...draft, what: e.target.value })} />
               <div className="grid grid-cols-2 gap-2">
@@ -564,9 +612,10 @@ function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
                   </div>
                 </div>
               )}
+              {editErr && <p className="text-xs text-rose-500">{editErr}</p>}
               <div className="flex gap-2">
                 <button onClick={saveEdit} disabled={busy} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-500 text-white disabled:opacity-60">保存（再承認へ）</button>
-                <button onClick={() => { setEditing(false); setDraft({ what: task.what, why: task.why ?? '', who: task.who ?? '', whereLoc: task.whereLoc ?? '', whenDue: task.whenDue ?? '', how: task.how ?? '', departmentId: task.departmentId ?? '', startDate: task.startDate ?? '' }); }} className="px-3 py-1.5 rounded-lg text-xs text-slate-500">取消</button>
+                <button onClick={() => { setEditing(false); setEditErr(''); setDraft({ what: task.what, why: task.why ?? '', who: task.who ?? '', whereLoc: task.whereLoc ?? '', whenDue: task.whenDue ?? '', how: task.how ?? '', departmentId: task.departmentId ?? '', startDate: task.startDate ?? '' }); }} className="px-3 py-1.5 rounded-lg text-xs text-slate-500">取消</button>
               </div>
             </div>
           )}
@@ -588,6 +637,7 @@ export default function TodosPage() {
   const [editTodo, setEditTodo] = useState<Todo | null>(null);
   const [sortBy, setSortBy] = useState<'createdAt' | 'dueDate' | 'priority'>('dueDate');
   const [quickFilter, setQuickFilter] = useState<'none' | 'overdue' | 'dueSoon' | 'inProgress'>('none');
+  const [period, setPeriod] = useState<Period | null>(null); // 完了の期間絞り込み（ダッシュボードの完了カードから）
   const [view, setView] = useState<View>('mine');
   const [viewInit, setViewInit] = useState(false);
   const [todoParam, setTodoParam] = useState<string | null>(null);
@@ -606,6 +656,9 @@ export default function TodosPage() {
     if (fv === 'mine' || fv === 'shared') setFilterView(fv);
     // 期限超過カードから ?overdue=1（期限切れのみ絞込）
     if (params.get('overdue') === '1') { setQuickFilter('overdue'); setFilterStatus('all'); }
+    // ダッシュボードの完了カードから ?status=done&period=（完了を期間で絞込）
+    const pd = params.get('period');
+    if (pd === 'today' || pd === 'week' || pd === 'month' || pd === 'year') { setPeriod(pd); setFilterStatus('done'); }
     setTodoParam(params.get('todo'));
   }, []);
 
@@ -639,7 +692,7 @@ export default function TodosPage() {
           }
           return taskVisible(d, t, view, currentUser);
         })
-        .map((t) => ({ ...t, decisionTitle: d.title, boardOnly: d.boardOnly }))),
+        .map((t) => ({ ...t, decisionTitle: d.title, boardOnly: d.boardOnly, decisionCreatedBy: d.createdBy, decisionDepartmentId: d.departmentId }))),
     [state.decisions, view, filterView, currentUser]);
 
   const filteredDecisionTasks = useMemo(() => {
@@ -680,24 +733,26 @@ export default function TodosPage() {
 
   // 個人タスクと決定タスクを統合して1つの並び順に（完了予定日＝古い順／作成日＝新しい順）
   const combinedList = useMemo(() => {
-    const items: Array<{ key: string; kind: 'todo' | 'decision'; due?: string | null; created: string; status: string; todo?: Todo; task?: ActiveDecisionTask }> = [];
-    if (filterType !== 'decision') filteredTodos.forEach((t) => items.push({ key: `todo-${t.id}`, kind: 'todo', due: t.dueDate, created: t.createdAt, status: t.status, todo: t }));
-    if (filterType !== 'todo') filteredDecisionTasks.forEach((t) => items.push({ key: `dec-${t.id}`, kind: 'decision', due: t.whenDue, created: t.createdAt, status: t.status, task: t }));
+    const items: Array<{ key: string; kind: 'todo' | 'decision'; due?: string | null; created: string; status: string; completed?: string | null; todo?: Todo; task?: ActiveDecisionTask }> = [];
+    if (filterType !== 'decision') filteredTodos.forEach((t) => items.push({ key: `todo-${t.id}`, kind: 'todo', due: t.dueDate, created: t.createdAt, status: t.status, completed: t.completedAt, todo: t }));
+    if (filterType !== 'todo') filteredDecisionTasks.forEach((t) => items.push({ key: `dec-${t.id}`, kind: 'decision', due: t.whenDue, created: t.createdAt, status: t.status, completed: t.completedAt, task: t }));
     // ステータスカード（期限切れ・今週締切・進行中）クリック時の絞り込み
     let result = items;
     if (quickFilter !== 'none') {
-      const today = new Date().toISOString().split('T')[0];
-      const weekLater = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
-      if (quickFilter === 'overdue') result = items.filter((x) => x.status !== 'done' && x.due && x.due < today);
-      else if (quickFilter === 'dueSoon') result = items.filter((x) => x.status !== 'done' && x.due && x.due >= today && x.due <= weekLater);
+      const today = jstToday();
+      const weekLater = jstDateStr(7);
+      if (quickFilter === 'overdue') result = items.filter((x) => x.status !== 'done' && isOverdueDue(x.due));
+      else if (quickFilter === 'dueSoon') result = items.filter((x) => x.status !== 'done' && !isOverdueDue(x.due) && x.due && x.due >= today && x.due <= weekLater);
       else if (quickFilter === 'inProgress') result = items.filter((x) => x.status === 'in_progress');
     }
+    // 完了の期間絞り込み（ダッシュボードの完了カードから）：completedAt が期間内の完了タスク
+    if (period) { const from = jstPeriodStartMs(period); result = result.filter((x) => x.completed && new Date(x.completed).getTime() >= from); }
     result.sort((a, b) => {
       if (sortBy === 'dueDate') return (a.due || 'zzzz').localeCompare(b.due || 'zzzz');
       return (b.created || '').localeCompare(a.created || ''); // 作成日（新しい順）
     });
     return result;
-  }, [filteredTodos, filteredDecisionTasks, filterType, sortBy, quickFilter]);
+  }, [filteredTodos, filteredDecisionTasks, filterType, sortBy, quickFilter, period]);
 
   const handleToggle = (todo: Todo) => {
     updateTodo({ ...todo, status: todo.status === 'done' ? 'todo' : 'done' });
@@ -755,13 +810,13 @@ export default function TodosPage() {
       ...todosInScope.map((t) => ({ status: t.status, due: t.dueDate })),
       ...decInScope.map((t) => ({ status: t.status, due: t.whenDue })),
     ];
-    const today = new Date().toISOString().split('T')[0];
-    const weekLater = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+    const today = jstToday();
+    const weekLater = jstDateStr(7);
     const open = items.filter((x) => x.status !== 'done');
     return {
       remaining: open.length,
-      overdue: open.filter((x) => x.due && x.due < today).length,
-      dueSoon: open.filter((x) => x.due && x.due >= today && x.due <= weekLater).length,
+      overdue: open.filter((x) => isOverdueDue(x.due)).length,
+      dueSoon: open.filter((x) => !isOverdueDue(x.due) && x.due && x.due >= today && x.due <= weekLater).length,
       inProgress: items.filter((x) => x.status === 'in_progress').length,
     };
   }, [state.todos, decisionTasks, filterType, filterView, currentUser]);
@@ -853,6 +908,25 @@ export default function TodosPage() {
           <option value="createdAt">作成日（新しい順）</option>
         </select>
       </div>
+
+      {/* 期限超過で来た時、共有タブにも期限超過があれば案内 */}
+      {quickFilter === 'overdue' && filterView === 'mine' && (() => {
+        // 共有タブだけに出る期限超過 = ①共有の個人タスク(他人所有) ②全社通達の決定タスク(担当が自分でない=自分タブには出ない)
+        const sharedTodo = state.todos.filter((t) => t.isShared && t.userId !== currentUser?.username && t.status !== 'done' && isOverdueDue(t.dueDate)).length;
+        const sharedDecision = state.decisions
+          .filter((d) => d.everApproved && d.departmentId === 'all')
+          .flatMap((d) => d.tasks.filter((t) => !t.pendingEdit && t.who !== currentUser?.username && taskVisible(d, t, view, currentUser) && t.status !== 'done' && isOverdueDue(t.whenDue)))
+          .length;
+        const sharedOverdue = sharedTodo + sharedDecision;
+        if (sharedOverdue === 0) return null;
+        const msg = combinedList.length > 0 ? '共有タスクにも期限超過タスクがあります' : '共有タスクに期限超過タスクが入っています';
+        return (
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300">
+            <span className="flex-1">⚠ {msg}（{sharedOverdue}件）</span>
+            <button onClick={() => setFilterView('shared')} className="text-xs px-2.5 py-1 rounded-lg bg-amber-500 text-white hover:bg-amber-600 flex-shrink-0">共有タスクを見る</button>
+          </div>
+        );
+      })()}
 
       {/* Task list（通常タスク + 決定タスク 統合） */}
       <div className="space-y-2">

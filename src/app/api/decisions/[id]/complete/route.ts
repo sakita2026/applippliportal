@@ -12,7 +12,7 @@ const DECISION_INCLUDE = {
 // タスク0件の決定事項のみ、手動で完了/未完了を切り替える。承認済み(approved/done)が対象。
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const username = req.cookies.get('workportal_auth')?.value ?? null;
+  const username = req.headers.get('x-wp-user');
   const member = await getMember(username);
   if (!member) return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
 

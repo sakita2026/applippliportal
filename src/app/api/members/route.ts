@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fetchDirectory } from '@/lib/directory';
 
 function getUsernameFromCookie(req: NextRequest): string | null {
-  return req.cookies.get('workportal_auth')?.value ?? null;
+  return req.headers.get('x-wp-user');
 }
 
 // メンバー一覧は orgportal のディレクトリを参照（WorkPortal はユーザー管理を持たない）

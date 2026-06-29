@@ -190,6 +190,7 @@ export interface DecisionTask {
   departmentId?: string; // 部門
   status: TodoStatus;
   completedAt?: string | null; // 完了日時
+  createdBy?: string | null; // 実行タスクの作成者 username
   startDate?: string | null; // 開始日 YYYY-MM-DD（whenDue を完了予定日として扱う）
   pendingEdit?: boolean;  // このタスク自体が再承認待ち（承認まで一覧で非表示）
   editedBy?: string | null; // このタスクを直近に編集した人（取り消しはこの人のみ可）

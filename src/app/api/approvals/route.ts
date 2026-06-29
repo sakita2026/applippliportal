@@ -11,7 +11,7 @@ const DECISION_INCLUDE = {
 };
 
 function getUsername(req: NextRequest): string | null {
-  return req.cookies.get('workportal_auth')?.value ?? null;
+  return req.headers.get('x-wp-user');
 }
 
 const UNDO_WINDOW_MS = 30 * 60 * 1000; // 承認の取り消しは30分以内

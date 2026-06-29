@@ -6,7 +6,7 @@ import { restorePolicy } from '@/lib/snapshot';
 // 方針の編集取り消し（承認待ちの間のみ・取締役のみ）
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const member = await getMember(req.cookies.get('workportal_auth')?.value ?? null);
+  const member = await getMember(req.headers.get('x-wp-user'));
   if (!member) return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
   const p = await prisma.policy.findUnique({ where: { id } });
   if (!p) return NextResponse.json({ error: '対象が見つかりません' }, { status: 404 });

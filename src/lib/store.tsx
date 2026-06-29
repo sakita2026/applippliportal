@@ -163,6 +163,7 @@ const StoreContext = createContext<StoreContextValue | null>(null);
 // API helpers
 async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
+    cache: 'no-store', // 常に最新を取得（承認状態などが古くならないように）
     headers: { 'Content-Type': 'application/json' },
     ...options,
   });

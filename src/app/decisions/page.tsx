@@ -8,6 +8,8 @@ import { ja } from 'date-fns/locale';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { getDepartmentName } from '@/lib/departments';
 import { EditDiff } from '@/components/EditDiff';
+import { isOverdueDue, jstPeriodStartMs, type Period } from '@/lib/date';
+import { canManageDecisionTask, canManageDecision } from '@/lib/visibility';
 import { ScopeControl } from '@/components/ScopeControl';
 import { decisionVisible, defaultView, type View } from '@/lib/visibility';
 
@@ -574,9 +576,11 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId }: { decision
   const canApproveThis = eligible && decision.status === 'pending' && !iApproved;
   const deptName = decision.departmentId === 'all' ? '全員（通達）' : decision.departmentId ? getDepartmentName(decision.departmentId, state.departments) : null;
   const requiredText = noManager ? '取締役2名' : '担当部長＋取締役1名';
-  // 決定事項を編集できるのは部長以上（部長 or 取締役 or 代表取締役）のみ
-  const isManagerOrAbove = !!me && (me.position === 'manager' || isDir);
-  const canEdit = isManagerOrAbove && !decision.deleteRequested;
+  // 決定事項を編集・削除できるのは 入力者(起案者)＋担当者＋担当部長＋取締役 のみ
+  // 全社通達(all)の担当部長＝担当者の部署の部長
+  const assigneeDept = decision.assigneeUsername ? state.members.find((m) => m.username === decision.assigneeUsername)?.departmentId ?? null : null;
+  const canManageDec = canManageDecision(decision, me, assigneeDept);
+  const canEdit = canManageDec && !decision.deleteRequested;
   // 編集の取り消し：承認待ちの間のみ・編集前スナップショットあり・「編集した本人」のみ
   const canUndoEdit = !!me && decision.status === 'pending' && !!decision.hasPrevState && decision.editedBy === me.username && !decision.deleteRequested;
   // 承認の取り消し：自分の承認・承認待ち（2名未達）・承認から30分以内
@@ -722,15 +726,15 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId }: { decision
             <>
               <span className="text-xs px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-600">削除承認待ち</span>
               {eligible && (
-                <>
-                  <button onClick={handleRequestDelete} disabled={busy}
-                    className="px-2 py-1 rounded-lg text-xs font-medium bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-60">削除を承認</button>
-                  <button onClick={handleCancelDelete} disabled={busy}
-                    className="px-2 py-1 rounded-lg text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">取消</button>
-                </>
+                <button onClick={handleRequestDelete} disabled={busy}
+                  className="px-2 py-1 rounded-lg text-xs font-medium bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-60">削除を承認</button>
+              )}
+              {canManageDec && (
+                <button onClick={handleCancelDelete} disabled={busy}
+                  className="px-2 py-1 rounded-lg text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">取消</button>
               )}
             </>
-          ) : eligible && (
+          ) : canManageDec && (
             <button onClick={handleRequestDelete} disabled={busy}
               className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors" title="削除を申請">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -788,15 +792,19 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId }: { decision
                 <span className={`font-medium ${t.status === 'done' ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}>{t.what}</span>
                 <span className="text-xs text-slate-400">{STATUS_LABELS[t.status as TodoStatus]}</span>
                 {t.pendingEdit && <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">再承認待ち</span>}
-                <button onClick={() => setEditingTaskId(editingTaskId === t.id ? null : t.id)}
-                  className="ml-auto text-xs px-2 py-0.5 rounded-lg text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors flex-shrink-0">
-                  {editingTaskId === t.id ? '閉じる' : '編集'}
-                </button>
+                {canManageDecisionTask(t, me, decision.departmentId) && (
+                  <button onClick={() => setEditingTaskId(editingTaskId === t.id ? null : t.id)}
+                    className="ml-auto text-xs px-2 py-0.5 rounded-lg text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors flex-shrink-0">
+                    {editingTaskId === t.id ? '閉じる' : '編集'}
+                  </button>
+                )}
               </div>
               {editingTaskId === t.id ? (
                 <InlineTaskEditor task={{ ...t, decisionId: decision.id }} onClose={() => setEditingTaskId(null)} />
               ) : (
                 <div className="pl-4 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-400">
+                  {decision.createdBy && <span>決定事項作成者: {resolveMemberName(state.members, decision.createdBy)}</span>}
+                  {t.createdBy && <span>実行タスク作成者: {resolveMemberName(state.members, t.createdBy)}</span>}
                   {t.who && <span>担当: {resolveMemberName(state.members, t.who)}</span>}
                   {t.departmentId && <span>部門: {getDepartmentName(t.departmentId, state.departments)}</span>}
                   {t.startDate && <span>開始: {t.startDate}</span>}
@@ -843,6 +851,7 @@ export default function DecisionsPage() {
   const [filter, setFilter] = useState<FilterStatus>('incomplete');
   const [boardFilter, setBoardFilter] = useState(false);
   const [overdueFilter, setOverdueFilter] = useState(false);
+  const [period, setPeriod] = useState<Period | null>(null); // 完了の期間絞り込み（ダッシュボードの完了カードから）
   const [view, setView] = useState<View>('mine');
   const [viewInit, setViewInit] = useState(false);
   // ダッシュボードから ?dec=&task= で来たとき、対象カードを展開＋タスク編集を開く
@@ -853,6 +862,8 @@ export default function DecisionsPage() {
     const params = new URLSearchParams(window.location.search);
     const s = params.get('status');
     if (s === 'pending' || s === 'approved' || s === 'done' || s === 'all') setFilter(s);
+    const pd = params.get('period');
+    if (pd === 'today' || pd === 'week' || pd === 'month' || pd === 'year') { setPeriod(pd); setFilter('done'); }
     if (params.get('board') === '1') { setBoardFilter(true); setFilter('all'); setView('all'); setViewInit(true); }
     if (params.get('overdue') === '1') { setOverdueFilter(true); setFilter('all'); setView('all'); setViewInit(true); }
     const dec = params.get('dec');
@@ -870,16 +881,17 @@ export default function DecisionsPage() {
   // まずスコープ（自分／自部門／全社）で絞り込み、その中で進捗タブを適用
   const scoped = useMemo(() => state.decisions.filter(matchesScope), [state.decisions, matchesScope]);
 
-  const today = new Date().toISOString().split('T')[0];
   const filtered = useMemo(() => {
     let list = scoped;
     if (boardFilter) list = list.filter((d) => d.boardOnly);
-    if (overdueFilter) list = list.filter((d) => d.status !== 'done' && d.dueDate && d.dueDate < today);
+    if (overdueFilter) list = list.filter((d) => d.status !== 'done' && isOverdueDue(d.dueDate));
     if (filter === 'incomplete') list = list.filter((d) => d.status !== 'done');
     else if (filter !== 'all') list = list.filter((d) => d.status === filter);
+    // 完了の期間絞り込み（ダッシュボードの完了カードから）：completedAt が期間内のもの
+    if (period) { const from = jstPeriodStartMs(period); list = list.filter((d) => d.completedAt && new Date(d.completedAt).getTime() >= from); }
     // 完了（予定）日順：古い順、未設定は末尾
     return [...list].sort((a, b) => (a.dueDate || 'zzzz').localeCompare(b.dueDate || 'zzzz'));
-  }, [scoped, filter, boardFilter, overdueFilter, today]);
+  }, [scoped, filter, boardFilter, overdueFilter, period]);
 
   const counts = useMemo(() => ({
     all: scoped.length,

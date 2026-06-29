@@ -5,7 +5,7 @@ import { isAdminUser } from '@/lib/members';
 const TASKS_INCLUDE = { tasks: { orderBy: { sortOrder: 'asc' as const } } };
 
 function getUsernameFromCookie(req: NextRequest): string | null {
-  return req.cookies.get('workportal_auth')?.value ?? null;
+  return req.headers.get('x-wp-user');
 }
 
 // 管理者が決定事項を承認 → ステータスを approved にしてタスクを稼働させる

@@ -8,6 +8,8 @@ type Row = {
   id: string; entityType: 'policy' | 'project' | 'decision'; entityId: string; title: string;
   action: 'approve' | 'delete_approve' | 'deleted' | 'edit';
   actor: string; actorName: string; actorDept?: string; asDirector: boolean; asManager: boolean; detail: string | null; createdAt: string;
+  assigneeNames?: string | null;
+  creatorNames?: string | null;
 };
 
 const TYPE_LABEL: Record<string, string> = { policy: '方針', project: 'プロジェクト', decision: '決定事項' };
@@ -125,6 +127,8 @@ export default function HistoryPage() {
                   <span className={`text-xs font-bold px-2 py-0.5 rounded-full border flex-shrink-0 ${ACTION_BADGE[r.action]}`}>{reqKindLabel(r)}</span>
                   <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${TYPE_BADGE[r.entityType]}`}>{TYPE_LABEL[r.entityType]}</span>
                   <span className="flex-1 text-sm text-slate-700 dark:text-slate-200 truncate">{r.title}</span>
+                  {r.creatorNames && <span className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0 truncate max-w-[180px]">作成: {r.creatorNames}</span>}
+                  {r.assigneeNames && <span className="text-xs text-indigo-600 dark:text-indigo-400 flex-shrink-0 truncate max-w-[180px]">担当: {r.assigneeNames}</span>}
                   {applicantOf(r) && <span className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">申請: {applicantOf(r)}</span>}
                   {(r.action === 'approve' || r.action === 'delete_approve') && <span className="text-xs text-emerald-600 dark:text-emerald-400 flex-shrink-0">承認: {withDept(r.actorName, r.actorDept)}</span>}
                   <svg className={`w-4 h-4 text-slate-400 flex-shrink-0 transition-transform ${openId === r.id ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
@@ -138,6 +142,8 @@ export default function HistoryPage() {
                           <dt className="text-slate-400">申請種別</dt><dd className="text-slate-700 dark:text-slate-200 font-medium">{reqKindLabel(r)}</dd>
                           <dt className="text-slate-400">対象種別</dt><dd className="text-slate-700 dark:text-slate-200">{TYPE_LABEL[r.entityType]}</dd>
                           <dt className="text-slate-400">対象</dt><dd className="text-slate-700 dark:text-slate-200">{r.title}</dd>
+                          {r.creatorNames && (<><dt className="text-slate-400">作成者</dt><dd className="text-slate-700 dark:text-slate-200">{r.creatorNames}</dd></>)}
+                          {r.assigneeNames && (<><dt className="text-slate-400">この内容の担当者</dt><dd className="text-slate-700 dark:text-slate-200">{r.assigneeNames}</dd></>)}
                           {applicantOf(r) && (<><dt className="text-slate-400">申請者</dt><dd className="text-slate-700 dark:text-slate-200">{applicantOf(r)}</dd></>)}
                           {p?.submittedAt && (<><dt className="text-slate-400">申請日時</dt><dd className="text-slate-700 dark:text-slate-200">{p.submittedAt}</dd></>)}
                           {(r.action === 'approve' || r.action === 'delete_approve') && (<><dt className="text-slate-400">承認者</dt><dd className="text-slate-700 dark:text-slate-200">{withDept(r.actorName, r.actorDept)}{r.asDirector && ' / 取締役'}{r.asManager && ' / 担当部長'}</dd></>)}

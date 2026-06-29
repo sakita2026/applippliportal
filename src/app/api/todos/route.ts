@@ -5,8 +5,8 @@ import { isAdminUser } from '@/lib/members';
 const STEPS_INCLUDE = { steps: { orderBy: { stepOrder: 'asc' as const } } };
 
 function getUsernameFromCookie(req: NextRequest): string | null {
-  const cookie = req.cookies.get('workportal_auth')
-  return cookie?.value ?? null
+  // middleware が検証済みでセットした信頼できるユーザー名
+  return req.headers.get('x-wp-user')
 }
 
 export async function GET(req: NextRequest) {

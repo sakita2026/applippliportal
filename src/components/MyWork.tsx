@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { useCurrentUser } from '@/lib/useCurrentUser';
+import { isOverdueDue } from '@/lib/date';
 import type { Decision, Todo } from '@/types';
 
 type LiveTask = { id: string; title: string; due?: string | null; who?: string | null; departmentId?: string | null; status: string; source: 'todo' | 'decision'; decisionTitle?: string; decisionId?: string };
@@ -16,17 +17,17 @@ export function MyWork() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [policies, setPolicies] = useState<Pol[]>([]);
   const [projects, setProjects] = useState<Proj[]>([]);
-  const [updatedAt, setUpdatedAt] = useState<string>('');
 
   const load = useCallback(async () => {
+    // no-store: 承認直後など最新状態を必ず反映（承認済みが「承認待ち」に残らないように）
+    const opt = { cache: 'no-store' as const };
     const [d, t, p, pr] = await Promise.all([
-      fetch('/api/decisions').then((r) => r.ok ? r.json() : []).catch(() => []),
-      fetch('/api/todos').then((r) => r.ok ? r.json() : []).catch(() => []),
-      fetch('/api/policies').then((r) => r.ok ? r.json() : []).catch(() => []),
-      fetch('/api/projects').then((r) => r.ok ? r.json() : []).catch(() => []),
+      fetch('/api/decisions', opt).then((r) => r.ok ? r.json() : []).catch(() => []),
+      fetch('/api/todos', opt).then((r) => r.ok ? r.json() : []).catch(() => []),
+      fetch('/api/policies', opt).then((r) => r.ok ? r.json() : []).catch(() => []),
+      fetch('/api/projects', opt).then((r) => r.ok ? r.json() : []).catch(() => []),
     ]);
     setDecisions(d); setTodos(t); setPolicies(p); setProjects(pr);
-    setUpdatedAt(new Date().toLocaleTimeString('ja-JP'));
   }, []);
 
   useEffect(() => {
@@ -133,11 +134,10 @@ export function MyWork() {
     return items;
   }, [decisions, policies, projects, me, isDir]);
 
-  const today = new Date().toISOString().split('T')[0];
-  const isOverdue = (due?: string | null) => due && due < today;
+  const isOverdue = (due?: string | null) => isOverdueDue(due);
 
   const TYPE_BADGE: Record<string, string> = {
-    '方針': 'bg-amber-50 dark:bg-amber-900/20 text-amber-600',
+    '方針': 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600',
     'プロジェクト': 'bg-sky-50 dark:bg-sky-900/20 text-sky-600',
     '決定事項': 'bg-violet-50 dark:bg-violet-900/20 text-violet-600',
   };
@@ -148,7 +148,7 @@ export function MyWork() {
         <div className="flex items-center gap-2">
           <span className={`w-2 h-2 rounded-full ${accent}`} />
           <h3 className="font-semibold text-sm text-slate-800 dark:text-slate-100">{title}</h3>
-          <span className={`text-xs px-1.5 py-0.5 rounded-full ${count > 0 ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 font-bold' : 'text-slate-400'}`}>{count}件</span>
+          <span className={`text-xs px-1.5 py-0.5 rounded-full ${count > 0 ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-bold' : 'text-slate-400'}`}>{count}件</span>
         </div>
         <Link href={href} className="text-xs text-indigo-500 hover:text-indigo-600">すべて見る →</Link>
       </div>
@@ -159,7 +159,7 @@ export function MyWork() {
   const TaskRow = ({ t }: { t: LiveTask }) => (
     // 行クリックで対象を開く（決定事項由来＝決定事項ページ／通常タスク＝実行タスクページ）
     <Link href={t.source === 'decision' ? `/decisions?dec=${t.decisionId}&task=${t.id}` : `/todos?todo=${t.id}`} className="flex items-center gap-2 px-5 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${t.status === 'in_progress' ? 'bg-amber-400' : 'bg-slate-300'}`} />
+      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${t.status === 'in_progress' ? 'bg-indigo-400' : 'bg-slate-300'}`} />
       <span className="flex-1 text-slate-700 dark:text-slate-200 truncate">{t.title}</span>
       {t.source === 'decision' && <span className="text-xs px-1.5 py-0.5 rounded bg-sky-50 dark:bg-sky-900/20 text-sky-600 flex-shrink-0">決定</span>}
       {t.due && <span className={`text-xs flex-shrink-0 ${isOverdue(t.due) ? 'text-rose-500 font-medium' : 'text-slate-400'}`}>{isOverdue(t.due) ? '⚠ ' : ''}{t.due.slice(5)}</span>}
@@ -170,13 +170,9 @@ export function MyWork() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">今日やること（リアルタイム）</h2>
-        {updatedAt && <span className="text-xs text-slate-400">更新 {updatedAt}・30秒ごと自動更新</span>}
-      </div>
       {/* 1段目: あなたの承認待ち（左）＋取締役会限定（右・該当時のみ） */}
       <div className={`grid grid-cols-1 gap-4 ${boardOnlyDecisions.length > 0 ? 'lg:grid-cols-2' : ''}`}>
-        <Section title="あなたの承認待ち" count={approvals.length} accent="bg-amber-500" href="/decisions?status=pending">
+        <Section title="あなたの承認待ち" count={approvals.length} accent="bg-indigo-500" href="/decisions?status=pending">
           {approveErr && <p className="px-5 py-2 text-xs text-rose-600 dark:text-rose-400">{approveErr}</p>}
           {approvals.length === 0 ? <p className="text-center text-xs text-slate-400 py-6">承認待ちなし</p> : (<>
             {approvals.slice(0, 10).map((a) => (
@@ -190,11 +186,11 @@ export function MyWork() {
               )}
               {a.action === '承認' && !a.iApproved ? (
                 <button onClick={() => approveItem(a)} disabled={busyKey === a.key}
-                  className="text-xs px-2.5 py-1 rounded-lg flex-shrink-0 font-medium bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 transition-colors">
+                  className="text-xs px-2.5 py-1 rounded-lg flex-shrink-0 font-medium bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-60 transition-colors">
                   {busyKey === a.key ? '承認中…' : '承認する'}
                 </button>
               ) : (
-                <Link href={a.href} className={`text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 ${a.action === '削除承認' ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'}`}>{a.action === '削除承認' ? '削除承認 →' : '確認 →'}</Link>
+                <Link href={a.href} className={`text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 ${a.action === '削除承認' ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300' : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'}`}>{a.action === '削除承認' ? '削除承認 →' : '確認 →'}</Link>
               )}
             </div>
             ))}
@@ -211,7 +207,7 @@ export function MyWork() {
                   <span className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 bg-rose-50 dark:bg-rose-900/20 text-rose-600 border border-rose-200 dark:border-rose-800">🔒 限定</span>
                   <span className="flex-1 text-slate-700 dark:text-slate-200 truncate">{d.title}</span>
                   {open > 0 && <span className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300">未完了{open}件</span>}
-                  {d.status === 'pending' && <span className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">承認待ち</span>}
+                  {d.status === 'pending' && <span className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">承認待ち</span>}
                 </Link>
               );
             })}
@@ -222,7 +218,12 @@ export function MyWork() {
       {/* 2段目: 自分の未完了・自部門の未完了 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Section title="自分の未完了タスク" count={myTasks.length} accent="bg-indigo-500" href="/todos?status=incomplete&view=mine&fv=mine">
-          {myTasks.length === 0 ? <p className="text-center text-xs text-slate-400 py-6">未完了なし 🎉</p> : (<>
+          {myTasks.length === 0 ? (
+            <div className="text-center py-6">
+              <div className="text-5xl leading-none animate-bounce inline-block" role="img" aria-label="全タスク制覇">🏆</div>
+              <p className="text-sm font-medium text-slate-600 dark:text-slate-300 mt-2">全タスク制覇！</p>
+            </div>
+          ) : (<>
             {myTasks.slice(0, 10).map((t) => <TaskRow key={`${t.source}-${t.id}`} t={t} />)}
             {myTasks.length > 10 && <Link href="/todos?status=incomplete&view=mine&fv=mine" className="block text-center text-xs text-indigo-500 hover:text-indigo-600 py-2">他{myTasks.length - 10}件 — すべて見る →</Link>}
           </>)}

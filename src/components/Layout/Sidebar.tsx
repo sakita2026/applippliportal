@@ -37,15 +37,6 @@ const navItems = [
     ),
   },
   {
-    href: '/calendar',
-    label: 'カレンダー',
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-      </svg>
-    ),
-  },
-  {
     href: '/history',
     label: '承認履歴',
     icon: (
@@ -63,12 +54,23 @@ const navItems = [
       </svg>
     ),
   },
+  {
+    href: '/calendar',
+    label: 'カレンダー',
+    disabled: true, // 未実装のため無効化
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    ),
+  },
 ];
 
 export function Sidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const currentUser = useCurrentUser();
 
   const handleLogout = () => {
@@ -79,6 +81,9 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
+    // 組織管理メニューの表示判定。ログイン時に orgportal の isSuperAdmin を載せた表示用Cookie。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsSuperAdmin(document.cookie.split('; ').some((c) => c === 'workportal_admin=1'));
   }, []);
 
   return (
@@ -113,6 +118,21 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
       <nav className="flex-1 px-3 py-4 space-y-1">
         {navItems.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+          // 未実装の項目はクリック不可・薄表示で区別する
+          if (item.disabled) {
+            return (
+              <div
+                key={item.href}
+                aria-disabled="true"
+                title="準備中（未実装）"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap text-slate-300 dark:text-slate-600 opacity-60 cursor-not-allowed select-none"
+              >
+                {item.icon}
+                <span className="flex-1">{item.label}</span>
+                <span className="text-[10px] font-normal text-slate-300 dark:text-slate-600">準備中</span>
+              </div>
+            );
+          }
           return (
             <Link
               key={item.href}
@@ -133,8 +153,9 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
 
       {/* Bottom: theme toggle + user */}
       <div className="px-3 py-4 border-t space-y-3" style={{ borderColor: 'var(--border-color)' }}>
-        {/* 組織管理（システム管理者のみ） — orgportal の管理画面を別タブで開く */}
-        {currentUser?.role === 'admin' && (
+        {/* 組織管理（システム管理者のみ） — orgportal の管理画面を別タブで開く。
+            判定は orgportal の isSuperAdmin（ログイン時の SSO トークン由来）。 */}
+        {mounted && isSuperAdmin && (
           <a
             href={`${ORGPORTAL_URL}/admin`}
             target="_blank"

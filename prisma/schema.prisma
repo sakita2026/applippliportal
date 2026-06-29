@@ -145,6 +145,11 @@ model AuditLog {
   asDirector Boolean  @default(false)
   asManager  Boolean  @default(false)
   detail     String?  @db.NVarChar(1000)
+  // 可視範囲判定用スナップショット（書き込み時に確定）。カンマ区切り。
+  deptIds    String?  @db.NVarChar(500)   // 関係する部門ID（決定事項/実行タスク、紐づく方針・PJの部門）
+  involved   String?  @db.NVarChar(2000)  // 関与した username（起案/担当/承認/タスク担当/実行者）
+  assignee   String?  @db.NVarChar(500)   // この内容の担当者 username（決定事項の担当者＋実行タスクの担当者who。カンマ区切り複数。方針/PJは無し）
+  creator    String?  @db.NVarChar(500)   // 作成者 username（決定:起案者＋実行タスク作成者／方針PJ:起案者。カンマ区切り複数）
   createdAt  DateTime @default(now())
 
   @@index([entityType, entityId])
@@ -173,6 +178,8 @@ model Project {
   id          String   @id @default(cuid())
   name        String   @db.NVarChar(200)
   description String?  @db.NVarChar(1000)
+  departmentId     String? @db.NVarChar(50)  // 担当部門（担当部長の判定に使用）
+  assigneeUsername String? @db.NVarChar(50)  // 担当者
   policyId    String?
   status      String   @db.NVarChar(20) @default("pending") // pending | approved
   createdBy   String?  @db.NVarChar(50)
@@ -225,6 +232,7 @@ model DecisionTask {
   status       String   @db.NVarChar(20)   // todo | in_progress | done
   completedAt  DateTime?                    // 完了にした日時（done になった時刻。未完了に戻すと null）
   startDate    String?  @db.NVarChar(10)    // 開始日 YYYY-MM-DD
+  createdBy    String?  @db.NVarChar(50)    // 実行タスクの作成者 username（決定同時作成＝決定の起案者／後追い追加＝追加した人）
   pendingEdit  Boolean  @default(false)     // このタスク自体が再承認待ち（承認まで実行タスク一覧で非表示）
   prevState    String?  @db.NVarChar(Max)   // タスク編集前スナップショット(JSON)。承認待ち中のみ「編集の取り消し」に使用
   editedBy     String?  @db.NVarChar(50)    // このタスクを直近に編集した人（取り消しはこの人のみ可）
