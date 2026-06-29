@@ -1,8 +1,33 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Sidebar } from './Sidebar';
 import { useStore } from '@/lib/store';
+
+// 全ページ右上に置く「早わかりルールブック」への小さなリンク（ヘルプマーク）。
+function HelpLink({ variant }: { variant: 'desktop' | 'mobile' }) {
+  const icon = (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  );
+  if (variant === 'desktop') {
+    return (
+      <Link href="/guide" title="早わかりルールブック" aria-label="早わかりルールブック"
+        className="hidden lg:flex fixed top-3 right-5 z-40 items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800/90 backdrop-blur border border-slate-200 dark:border-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors">
+        {icon}
+        <span className="text-xs font-semibold">ルール</span>
+      </Link>
+    );
+  }
+  return (
+    <Link href="/guide" title="早わかりルールブック" aria-label="早わかりルールブック"
+      className="p-2 rounded-lg text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors">
+      {icon}
+    </Link>
+  );
+}
 
 function LoadingOverlay() {
   return (
@@ -66,6 +91,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: 'var(--background)' }}>
+      {/* 全ページ右上のヘルプ（早わかりルールブック）— デスクトップ用の固定ピル */}
+      <HelpLink variant="desktop" />
+
       {/* Desktop sidebar */}
       <div className="hidden lg:flex flex-shrink-0">
         <Sidebar />
@@ -102,7 +130,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               決めたことを100％実行できる決定管理
             </span>
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-0.5">
+            <HelpLink variant="mobile" />
             <LogoutButton />
           </div>
         </header>
