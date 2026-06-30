@@ -4,7 +4,7 @@ import Link from 'next/link';
 // 内容は docs/BASE_DESIGN.md（権限・表示の確定仕様）に厳密準拠。
 // 専門用語（内部フィールド名）は使わず、画面の言葉に翻訳して記載する。
 
-export const metadata = { title: '早わかりルールブック | WorkPortal' };
+export const metadata = { title: '早わかりルールブック | 決定管理' };
 
 function Section({ id, no, title, children }: { id: string; no: string; title: string; children: React.ReactNode }) {
   return (
@@ -41,7 +41,7 @@ export default function GuidePage() {
             </svg>
           </div>
           <div>
-            <h1 className="text-xl font-bold">WorkPortal 早わかりルールブック</h1>
+            <h1 className="text-xl font-bold">決定管理 早わかりルールブック</h1>
             <p className="text-sm text-white/80 mt-0.5">「誰に何が見えて、誰が何をできるか」をまとめた早わかり版です。</p>
           </div>
         </div>
@@ -143,15 +143,15 @@ export default function GuidePage() {
         <Card>
           <div className="flex flex-col items-center gap-1 text-center">
             {[
-              { n: '方針', d: '会社の大きな方向性', c: 'from-violet-500 to-violet-600' },
-              { n: 'プロジェクト', d: '方針を実現する取り組み', c: 'from-indigo-500 to-indigo-600' },
-              { n: '決定事項', d: '「決めたこと」', c: 'from-sky-500 to-sky-600' },
-              { n: '実行タスク', d: '決定を実行する具体作業（5W1H）', c: 'from-emerald-500 to-emerald-600' },
+              { n: '方針', d: '会社の大きな方向性' },
+              { n: 'プロジェクト', d: '方針を実現する取り組み' },
+              { n: '決定事項', d: '「決めたこと」' },
+              { n: '実行タスク', d: '決定を実行する具体作業（5W1H）' },
             ].map((x, i) => (
               <div key={x.n} className="flex flex-col items-center gap-1 w-full">
-                <div className={`w-full max-w-md rounded-xl bg-gradient-to-r ${x.c} text-white px-4 py-2.5`}>
-                  <span className="font-bold">{x.n}</span>
-                  <span className="text-white/85 text-xs ml-2">{x.d}</span>
+                <div className="w-full max-w-md rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2.5">
+                  <span className="font-bold text-slate-800 dark:text-slate-100">{x.n}</span>
+                  <span className="text-slate-500 dark:text-slate-400 text-xs ml-2">{x.d}</span>
                 </div>
                 {i < 3 && <span className="text-slate-400 text-lg leading-none">▼</span>}
               </div>
