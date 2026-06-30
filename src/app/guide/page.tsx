@@ -47,6 +47,27 @@ export default function GuidePage() {
         </div>
       </header>
 
+      {/* まずはじめに（重要）— 最上部に常設 */}
+      <Card className="border-2 border-rose-300 dark:border-rose-800 bg-rose-50/70 dark:bg-rose-900/15">
+        <h2 className="flex items-center gap-2 text-lg font-bold text-rose-700 dark:text-rose-300 mb-3">
+          <span className="text-xl">⚠️</span>まずはじめに（重要）
+        </h2>
+        <ol className="space-y-3 text-sm text-slate-700 dark:text-slate-200 list-decimal pl-5">
+          <li>
+            アプリ（ブラウザ）を<b>2つ・3つと同時に開いて使用できます</b>。<b>他端末との同時利用も可能</b>です。
+          </li>
+          <li>
+            <b className="text-rose-700 dark:text-rose-300">アプリを使わなくなったら必ずログアウトしてください。</b>
+            ブラウザを閉じただけではログインが保持されており危険です（ブラウザ依存のクッキー保持機能がデフォルトで設定されているため）。
+            <b className="text-rose-700 dark:text-rose-300">ご自分のPC・スマホ以外でこのアプリを使う場合、ログアウトせずに離れると「セキュリティルール違反」になります。</b>
+            ブラウザを閉じただけではログインのままです。<b>必ずログアウトを押す癖をつけてください。</b>
+          </li>
+          <li>
+            <b>無操作5時間で自動ログオフ</b>になります。
+          </li>
+        </ol>
+      </Card>
+
       {/* 役職の定義 */}
       <Card className="bg-slate-50 dark:bg-slate-900/60">
         <h2 className="font-bold text-slate-800 dark:text-slate-100 mb-2">まず：役職の呼び方</h2>
