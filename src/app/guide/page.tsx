@@ -265,6 +265,34 @@ export default function GuidePage() {
         </Card>
       </Section>
 
+      {/* 8. 決定事項の集計区分（実行管理集計区分） */}
+      <Section id="segment" no="8" title="決定事項の集計区分（一覧表示で効率アップ）">
+        <Card>
+          <p className="mb-3">
+            決定事項に <b>🗂 集計区分</b> を付けると、一覧でひと目で分類でき、<b>区分での絞り込み</b>で見やすくなります。
+            会議体ごとに「議題を事前に書き込む → その会議体の承認で決定 → 実行タスクへ」という流れで使います。
+          </p>
+          <div className="space-y-2">
+            <div className="rounded-xl border border-teal-200 dark:border-teal-800 p-3">
+              <p className="font-bold text-teal-700 dark:text-teal-300">🗂 取締役会</p>
+              <p className="text-sm mt-0.5">事前に議題を書き込めます → <b>取締役会の承認で決定</b> → タスクの実行へ。</p>
+            </div>
+            <div className="rounded-xl border border-teal-200 dark:border-teal-800 p-3">
+              <p className="font-bold text-teal-700 dark:text-teal-300">🗂 監査報告書</p>
+              <p className="text-sm mt-0.5">事前に<b>生塩先生が入力</b>できます → <b>取締役会の承認で決定</b> → タスクの実行へ。</p>
+            </div>
+            <div className="rounded-xl border border-teal-200 dark:border-teal-800 p-3">
+              <p className="font-bold text-teal-700 dark:text-teal-300">🗂 部門長会議</p>
+              <p className="text-sm mt-0.5">事前に議題を書き込めます → <b>部門長会議の承認で決定</b> → タスクの実行へ。</p>
+            </div>
+          </div>
+          <p className="text-xs text-slate-500 mt-3">
+            ※ 区分は決定事項の作成・編集で選べます（空白＝未設定）。一覧の <b>🗂 バッジ</b>と<b>区分の絞り込みプルダウン</b>で整理できます。
+            区分の<b>追加・名称変更・非表示・並び替え</b>は<b>「設定」ページ（システム管理者のみ）</b>で行います。
+          </p>
+        </Card>
+      </Section>
+
       <p className="text-xs text-slate-400 text-center pt-4 border-t border-slate-200 dark:border-slate-800">
         このルールブックは権限・表示の確定仕様にもとづいて作成しています。運用で不明点があれば管理部までご連絡ください。
       </p>
