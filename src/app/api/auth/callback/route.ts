@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAppToken } from '@/lib/sso';
-import { signSession } from '@/lib/session';
+import { signSession, SESSION_TTL_SEC } from '@/lib/session';
 
 // orgportal からのSSOコールバック：トークン検証 → WorkPortalセッション発行
 export async function GET(req: NextRequest) {
@@ -31,18 +31,19 @@ export async function GET(req: NextRequest) {
   const session = await signSession({ username: payload.username, name: payload.name });
   // 本番(HTTPS)では secure を付与。ローカル開発(http)では false にして送信できるようにする。
   const secure = process.env.NODE_ENV === 'production';
-  // maxAge/expires を付けない＝セッションCookie。ブラウザを閉じると破棄され、再ログインが必要になる。
+  // アイドルタイムアウト(300分)。maxAge を付与し、以後 middleware が操作のたびにスライド更新する。
+  // 操作が止まれば（タブを閉じる/放置）最後の操作から300分で失効＝再ログイン。
   res.cookies.set('workportal_auth', session, {
-    path: '/', sameSite: 'lax', httpOnly: true, secure,
+    path: '/', maxAge: SESSION_TTL_SEC, sameSite: 'lax', httpOnly: true, secure,
   });
   // 表示用（画面に氏名を出すだけ。認証には一切使わない＝信頼しない）
   res.cookies.set('workportal_user', payload.username, {
-    path: '/', sameSite: 'lax', httpOnly: false, secure,
+    path: '/', maxAge: SESSION_TTL_SEC, sameSite: 'lax', httpOnly: false, secure,
   });
   // 表示用：システム管理者(orgportal isSuperAdmin)か。組織管理メニューの出し分けにのみ使う。
   // クライアントが書き換えても表示が変わるだけで、orgportal /admin は server 側で isSuperAdmin を強制する。
   res.cookies.set('workportal_admin', payload.isSuperAdmin ? '1' : '0', {
-    path: '/', sameSite: 'lax', httpOnly: false, secure,
+    path: '/', maxAge: SESSION_TTL_SEC, sameSite: 'lax', httpOnly: false, secure,
   });
   return res;
 }

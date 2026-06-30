@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { verifySession } from '@/lib/session'
+import { verifySession, signSession, SESSION_TTL_SEC } from '@/lib/session'
 
 const ORGPORTAL_URL = process.env.ORGPORTAL_URL || 'http://localhost:3100'
 
@@ -15,7 +15,18 @@ export async function middleware(request: NextRequest) {
   if (session) {
     // 検証済みのユーザー名のみを下流ハンドラへ渡す（信頼できる本人情報）
     headers.set('x-wp-user', session.username)
-    return NextResponse.next({ request: { headers } })
+    const res = NextResponse.next({ request: { headers } })
+    // アイドルタイムアウトのスライド更新：操作のたびにトークン/Cookieの期限を SESSION_TTL_SEC 先へ延長。
+    // 操作が止まる（タブを閉じる/放置）と延長されず、最後の操作から SESSION_TTL_SEC で失効する。
+    const secure = process.env.NODE_ENV === 'production'
+    const fresh = await signSession({ username: session.username, name: session.name })
+    res.cookies.set('workportal_auth', fresh, { path: '/', maxAge: SESSION_TTL_SEC, httpOnly: true, sameSite: 'lax', secure })
+    res.cookies.set('workportal_user', session.username, { path: '/', maxAge: SESSION_TTL_SEC, httpOnly: false, sameSite: 'lax', secure })
+    const admin = request.cookies.get('workportal_admin')?.value
+    if (admin !== undefined) {
+      res.cookies.set('workportal_admin', admin, { path: '/', maxAge: SESSION_TTL_SEC, httpOnly: false, sameSite: 'lax', secure })
+    }
+    return res
   }
 
   // 未認証：API は 401、ページは SSO へリダイレクト
