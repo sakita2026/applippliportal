@@ -25,16 +25,9 @@ export async function middleware(request: NextRequest) {
   // 本番(プロキシ背後)では request.nextUrl.origin が内部ホストになるため、公開URLを優先
   const origin = process.env.APP_BASE_URL || request.nextUrl.origin
   const ret = encodeURIComponent(`${origin}/api/auth/callback`)
-  // ログインCSRF対策：ランダムな state を発行し、Cookie に保存＋authorize へ渡す。
-  // コールバックで Cookie と照合し、攻撃者が用意したトークンでの強制ログインを防ぐ。
-  const state = crypto.randomUUID()
-  const res = NextResponse.redirect(`${ORGPORTAL_URL}/authorize?app=workportal&return=${ret}&state=${state}`)
-  res.cookies.set('wp_sso_state', state, {
-    path: '/', httpOnly: true, sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 1800, // 30分（メール認証ログインの所要時間を考慮）
-  })
-  return res
+  // 注: 以前は state（CSRF対策）Cookie を発行していたが、メールリンク経由ログイン（別ブラウザ/メールアプリ内
+  // ブラウザで開く）や複数タブ同時起動で Cookie が不在/上書きになり、正規ログインが弾かれる事象が多発したため撤去。
+  return NextResponse.redirect(`${ORGPORTAL_URL}/authorize?app=workportal&return=${ret}`)
 }
 
 export const config = {

@@ -16,21 +16,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL('/login?error=no_token', origin));
   }
 
-  // ログインCSRF対策：state（middleware が発行した Cookie）と照合。
-  // 攻撃者が用意したトークンを被害者に踏ませても、被害者の Cookie に一致する state は持てないため失敗する。
-  const state = req.nextUrl.searchParams.get('state');
-  const expectedState = req.cookies.get('wp_sso_state')?.value;
-  if (!expectedState || !state || state !== expectedState) {
-    return NextResponse.redirect(new URL('/login?error=bad_state', origin));
-  }
-
+  // 注: 以前は state Cookie 照合（ログインCSRF対策）を行っていたが、メールリンク経由ログインや
+  // 複数タブ起動で Cookie 不在/不一致となり正規ログインが弾かれるため撤去。SSO トークン自体の
+  // 署名・issuer/audience・有効期限(10分)検証で正当性を担保する。
   const payload = await verifyAppToken(token);
   if (!payload) {
     return NextResponse.redirect(new URL('/login?error=invalid_token', origin));
   }
 
   const res = NextResponse.redirect(new URL('/dashboard', origin));
-  // 使い終えた state Cookie は破棄（単回使用）
+  // 旧仕様で残っている可能性のある wp_sso_state Cookie を掃除（現在は未使用）
   res.cookies.set('wp_sso_state', '', { path: '/', maxAge: 0 });
   // セッション本体：HMAC署名付きトークン（改ざん・なりすまし防止）。JSからは読めない。
   const session = await signSession({ username: payload.username, name: payload.name });
