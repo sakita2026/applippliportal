@@ -258,9 +258,8 @@ export default function GuidePage() {
         <Card className="bg-violet-50/60 dark:bg-violet-900/10 border-violet-200 dark:border-violet-900/40">
           <p className="font-semibold text-slate-800 dark:text-slate-100 mb-1">🏷 集計分類（実行タスク）</p>
           <ul className="space-y-1.5">
-            <li>・実行タスクに<b>集計用の分類</b>（例：キー／クラウド／DXpro／インポート／ISO／取締役会 など）を付けられます。未設定（空白）もOK。</li>
+            <li>・実行タスクに<b>集計用の分類</b>（例：キー／クラウド／DXpro／インポート など）を付けられます。未設定（空白）もOK。</li>
             <li>・決定事項・実行タスクの一覧では <b>🏷 のマーク</b>で分類が分かり、<b>実行タスク画面では分類で絞り込み</b>できます。</li>
-            <li>・分類の<b>追加・名称変更・非表示・並び替え</b>は<b>「設定」ページ（システム管理者のみ）</b>で行います。各分類には誤作動防止のための<b>コード</b>が付きます。</li>
           </ul>
         </Card>
       </Section>
@@ -288,7 +287,6 @@ export default function GuidePage() {
           </div>
           <p className="text-xs text-slate-500 mt-3">
             ※ 区分は決定事項の作成・編集で選べます（空白＝未設定）。一覧の <b>🗂 バッジ</b>と<b>区分の絞り込みプルダウン</b>で整理できます。
-            区分の<b>追加・名称変更・非表示・並び替え</b>は<b>「設定」ページ（システム管理者のみ）</b>で行います。
           </p>
         </Card>
       </Section>
