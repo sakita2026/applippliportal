@@ -77,7 +77,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const taskList: Array<Record<string, unknown>> = Array.isArray(newTasks) ? newTasks.filter((t) => t && typeof t.what === 'string' && (t.what as string).trim() !== '') : [];
     for (const t of taskList) changes.push({ field: '追加した実行タスク', before: '', after: String(t.what).trim() });
     if (editReason) changes.push({ field: '理由', before: '', after: editReason });
-    const note = changes.length ? JSON.stringify(changes) : null;
+    // 既に承認待ち（pending）中で、実行タスク編集の差分（taskId 付き）が記録されていれば保持し、
+    // 決定本体の変更（taskId 無し）と統合する。承認済み/完了からの編集は新サイクルとして作り直す。
+    type Ch = { field: string; before: string; after: string; taskId?: string };
+    let existingTaskDiffs: Ch[] = [];
+    if (before?.status === 'pending' && before.editNote) {
+      try { const p = JSON.parse(before.editNote); if (Array.isArray(p)) existingTaskDiffs = (p as Ch[]).filter((c) => c.taskId); } catch { existingTaskDiffs = []; }
+    }
+    const merged = [...changes, ...existingTaskDiffs];
+    const note = merged.length ? JSON.stringify(merged) : null;
     const auditDetail = changes.map((c) => `${c.field}: 「${c.before || '—'}」→「${c.after || '—'}」`).join(' / ');
 
     await prisma.approval.deleteMany({ where: { entityType: 'decision', entityId: id } });
@@ -124,6 +132,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
             decisionId: id, what: String(t.what).trim(),
             why: (t.why as string) ?? null, who: (t.who as string) ?? null, whereLoc: (t.whereLoc as string) ?? null,
             whenDue: (t.whenDue as string) ?? null, how: (t.how as string) ?? null, departmentId: (t.departmentId as string) ?? null,
+            category: (t.category as string) ?? null,
             startDate: (t.startDate as string) ?? null, status: 'todo', sortOrder: order++, pendingEdit: true,
             createdBy: username ?? null, // 編集で追加されたタスク＝追加した人を作成者に
           },
@@ -144,6 +153,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const { id } = await params;
     // 削除は 入力者(起案者)＋担当者＋担当部長＋取締役 のみ（全社通達の担当部長＝担当者の部署の部長）
     const actor = await getMember(username);
+    if (actor?.isAuditor) return NextResponse.json({ error: '監査役は削除できません' }, { status: 403 });
     const dec = await prisma.decision.findUnique({ where: { id }, select: { createdBy: true, assigneeUsername: true, departmentId: true } });
     const assigneeDept = dec?.assigneeUsername ? (await getMember(dec.assigneeUsername))?.departmentId ?? null : null;
     if (!dec || !canManageDecision(dec, actor, assigneeDept)) {

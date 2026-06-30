@@ -57,8 +57,25 @@ export async function GET(req: NextRequest) {
       arr.push({ approver: a.approver, asDirector: a.asDirector, asManager: a.asManager, createdAt: a.createdAt.toISOString() });
       map.set(a.entityId, arr);
     }
+    // 実行タスクの中止/中止解除 承認進捗（entityType='decisionTask'）をタスクごとに付与
+    const taskIds = decisions.flatMap((d) => d.tasks.map((t) => t.id));
+    const taskDelRows = taskIds.length
+      ? await prisma.approval.findMany({ where: { entityType: 'decisionTask', entityId: { in: taskIds }, action: 'delete' }, select: { entityId: true, approver: true, asDirector: true, asManager: true, createdAt: true } })
+      : [];
+    const taskDelById = new Map<string, Ap[]>();
+    for (const a of taskDelRows) {
+      const arr = taskDelById.get(a.entityId) ?? [];
+      arr.push({ approver: a.approver, asDirector: a.asDirector, asManager: a.asManager, createdAt: a.createdAt.toISOString() });
+      taskDelById.set(a.entityId, arr);
+    }
     // prevState は重いのでフラグだけ返す（編集の取り消し可否判定用）
-    const withApprovals = decisions.map(({ prevState, ...d }) => ({ ...d, approvals: byId.get(d.id) ?? [], deleteApprovals: delById.get(d.id) ?? [], hasPrevState: !!prevState }));
+    const withApprovals = decisions.map(({ prevState, ...d }) => ({
+      ...d,
+      approvals: byId.get(d.id) ?? [],
+      deleteApprovals: delById.get(d.id) ?? [],
+      hasPrevState: !!prevState,
+      tasks: d.tasks.map((t) => ({ ...t, deleteApprovals: taskDelById.get(t.id) ?? [] })),
+    }));
     return NextResponse.json(withApprovals);
   } catch {
     return NextResponse.json({ error: 'データの取得に失敗しました' }, { status: 500 });
@@ -110,6 +127,7 @@ export async function POST(req: NextRequest) {
               whenDue: (t.whenDue as string) ?? null,
               how: (t.how as string) ?? null,
               departmentId: (t.departmentId as string) ?? null,
+              category: (t.category as string) ?? null,
               startDate: (t.startDate as string) ?? null,
               status: 'todo',
               createdBy: username, // 決定と同時作成のタスク＝決定の起案者を作成者に

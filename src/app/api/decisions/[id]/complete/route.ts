@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getMember } from '@/lib/approval';
+import { canManageDecision } from '@/lib/visibility';
 import { writeAudit } from '@/lib/audit';
 
 const DECISION_INCLUDE = {
@@ -21,6 +22,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const d = await prisma.decision.findUnique({ where: { id }, include: { tasks: true } });
   if (!d) return NextResponse.json({ error: '対象が見つかりません' }, { status: 404 });
+  // 完了/未完了の切替は 入力者(起案者)・担当者・担当部長・取締役 のみ（編集権限と同じ）
+  const assigneeDept = d.assigneeUsername ? (await getMember(d.assigneeUsername))?.departmentId ?? null : null;
+  if (!canManageDecision(d, member, assigneeDept)) {
+    return NextResponse.json({ error: '完了操作は入力者・担当者・担当部長・取締役のみ可能です' }, { status: 403 });
+  }
   if (d.status === 'pending') return NextResponse.json({ error: '承認待ちの決定事項は完了にできません' }, { status: 409 });
   if (d.tasks.length > 0) return NextResponse.json({ error: 'タスクがある決定事項はタスクの完了状況で判定されます' }, { status: 409 });
 

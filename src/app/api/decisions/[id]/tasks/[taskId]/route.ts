@@ -19,12 +19,20 @@ export async function PUT(
   try {
     const { id, taskId } = await params;
     const body = await req.json();
-    const { what, why, who, whereLoc, whenDue, how, departmentId, status, contentEdit, projectIds, policyIds, startDate } = body;
+    const { what, why, who, whereLoc, whenDue, how, departmentId, category, status, contentEdit, projectIds, policyIds, startDate } = body;
 
     // 編集・ステータス変更は 入力者(起案者)＋担当者＋担当部長＋取締役 のみ
     const member = await getMember(req.headers.get('x-wp-user'));
-    const curTask = await prisma.decisionTask.findUnique({ where: { id: taskId }, select: { who: true, departmentId: true, createdBy: true } });
-    const decForPerm = await prisma.decision.findUnique({ where: { id }, select: { departmentId: true } });
+    const curTask = await prisma.decisionTask.findUnique({ where: { id: taskId }, select: { who: true, departmentId: true, createdBy: true, archived: true } });
+    const decForPerm = await prisma.decision.findUnique({ where: { id }, select: { departmentId: true, archived: true } });
+    // 中止中（archived）の決定事項のタスクは閲覧のみ＝編集・ステータス変更不可
+    if (decForPerm?.archived) {
+      return NextResponse.json({ error: '中止中の決定事項のため操作できません' }, { status: 403 });
+    }
+    // 中止中（archived）の実行タスクは閲覧のみ（中止解除してから操作する）
+    if (curTask?.archived) {
+      return NextResponse.json({ error: '中止中の実行タスクのため操作できません（中止解除が必要です）' }, { status: 403 });
+    }
     if (!curTask || !canManageDecisionTask(curTask, member, decForPerm?.departmentId ?? null)) {
       return NextResponse.json({ error: '編集・ステータス変更は入力者・担当者・担当部長・取締役のみ可能です' }, { status: 403 });
     }
@@ -59,6 +67,7 @@ export async function PUT(
         ...(whenDue !== undefined ? { whenDue: whenDue ?? null } : {}),
         ...(how !== undefined ? { how: how ?? null } : {}),
         ...(departmentId !== undefined ? { departmentId: departmentId ?? null } : {}),
+        ...(category !== undefined ? { category: category ?? null } : {}),
         ...(startDate !== undefined ? { startDate: startDate ?? null } : {}),
         ...(status !== undefined ? { status } : {}),
         ...(contentEdit ? { pendingEdit: true, prevState: taskSnap, editedBy: actor } : {}),
@@ -83,6 +92,12 @@ export async function PUT(
           const nm = (v: string | null) => (v ? (depts.find((d) => d.id === v)?.name ?? v) : '');
           changes.push({ field: tp('部門'), before: nm(beforeTask.departmentId), after: nm(departmentId || null) });
         }
+        // 集計分類の変更（コード→名称で表示。空は「（空白）」）
+        if (category !== undefined && (category || null) !== (beforeTask.category || null)) {
+          const cats = await prisma.categoryOption.findMany();
+          const nm = (v: string | null) => (v ? (cats.find((c) => c.code === v)?.label ?? v) : '（空白）');
+          changes.push({ field: tp('集計分類'), before: nm(beforeTask.category), after: nm(category || null) });
+        }
       }
       // タグの貼り替え＋差分
       if (Array.isArray(projectIds) && beforeTask) {
@@ -105,9 +120,20 @@ export async function PUT(
         await prisma.taskPolicy.deleteMany({ where: { taskId } });
         for (const pid of afterIds) await prisma.taskPolicy.create({ data: { taskId, policyId: pid } }).catch(() => null);
       }
+      // 既存の承認待ちサイクルの変更内容に、このタスク分を統合する。
+      // ・決定本体や他タスクの変更は保持し、このタスク（taskId）の変更だけ最新に差し替える。
+      // ・承認済み/完了から編集が始まった場合（status≠pending）は新しいサイクルとして作り直す。
+      // ・各エントリに taskId を付与＝承認画面で「どの実行タスクの、どこを何に変えたか」を3つでも個別表示できる。
+      type Ch = { field: string; before: string; after: string; taskId?: string };
+      const decCur = await prisma.decision.findUnique({ where: { id }, select: { status: true, editNote: true } });
+      let existing: Ch[] = [];
+      if (decCur?.status === 'pending' && decCur.editNote) {
+        try { const p = JSON.parse(decCur.editNote); if (Array.isArray(p)) existing = (p as Ch[]).filter((c) => c.taskId !== taskId); } catch { existing = []; }
+      }
       // 先頭に「対象実行タスク」を必ず明記（どのタスクの編集かを承認者が判別できるように）
-      const taskHeader = { field: '対象実行タスク', before: '', after: taskName || '(名称未設定)' };
-      const note = JSON.stringify([taskHeader, ...changes]);
+      const taskHeader: Ch = { field: '対象実行タスク', before: '', after: taskName || '(名称未設定)', taskId };
+      const tagged: Ch[] = changes.map((c) => ({ ...c, taskId }));
+      const note = JSON.stringify([...existing, taskHeader, ...tagged]);
       const auditDetail = `実行タスク「${taskName}」: ` + (changes.map((c) => `${c.field}「${c.before || '—'}」→「${c.after || '—'}」`).join(' / ') || '内容を編集');
       await prisma.approval.deleteMany({ where: { entityType: 'decision', entityId: id } });
       await prisma.decision.update({ where: { id }, data: { status: 'pending', approvedBy: null, approvedAt: null, editNote: note } });
@@ -118,11 +144,15 @@ export async function PUT(
 
     // 進捗（ステータス）変更：完了状況に合わせて親ステータスを再計算（pending は対象外）
     const decision = await prisma.decision.findUnique({ where: { id }, include: { tasks: true } });
-    if (decision && decision.status !== 'pending' && decision.tasks.length > 0) {
-      const allDone = decision.tasks.every((t) => t.status === 'done');
+    if (decision && decision.status !== 'pending') {
+      // 中止（archived）タスクは集計から除外する
+      const activeTasks = decision.tasks.filter((t) => !t.archived);
+      if (activeTasks.length > 0) {
+      const allDone = activeTasks.every((t) => t.status === 'done');
       const nextStatus = allDone ? 'done' : 'approved';
       if (nextStatus !== decision.status) {
         await prisma.decision.update({ where: { id }, data: { status: nextStatus, completedAt: nextStatus === 'done' ? new Date() : null } });
+      }
       }
     }
     const task = await prisma.decisionTask.findUnique({ where: { id: taskId } });
@@ -140,8 +170,12 @@ export async function DELETE(
     const { id, taskId } = await params;
     // 削除は 担当者＋担当部長＋取締役 のみ（起案者は編集はできるが削除は不可）
     const member = await getMember(req.headers.get('x-wp-user'));
+    if (member?.isAuditor) return NextResponse.json({ error: '監査役は削除できません' }, { status: 403 });
     const curTask = await prisma.decisionTask.findUnique({ where: { id: taskId }, select: { who: true, departmentId: true, createdBy: true } });
-    const decForPerm = await prisma.decision.findUnique({ where: { id }, select: { departmentId: true } });
+    const decForPerm = await prisma.decision.findUnique({ where: { id }, select: { departmentId: true, archived: true } });
+    if (decForPerm?.archived) {
+      return NextResponse.json({ error: '中止中の決定事項のため操作できません' }, { status: 403 });
+    }
     if (!curTask || !canManageDecisionTask(curTask, member, decForPerm?.departmentId ?? null, { includeCreator: false })) {
       return NextResponse.json({ error: '削除は担当者・担当部長・取締役のみ可能です' }, { status: 403 });
     }

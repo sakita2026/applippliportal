@@ -31,18 +31,22 @@ export default function DashboardPage() {
 
   // 表示範囲（/todos・/decisions と同じ既定スコープ：取締役=全体／部長=自部門／社員=自分）
   const view = defaultView(me);
-  // 稼働中の決定タスク（自分が見える範囲だけ＝/todos と一致）
+  // 稼働中の決定タスク（自分が見える範囲だけ＝/todos と一致）。アーカイブ済みは除外。
   const activeTasks = decisions
+    .filter((d) => d.everApproved && !d.archived)
+    .flatMap((d) => d.tasks.filter((t) => !t.pendingEdit && !t.archived && taskVisible(d, t, view, me)));
+  // 完了集計用：アーカイブ済みも含む全ての見える決定タスク（完了実績を残すため）。中止(archived)タスクは実績から除外。
+  const completedTaskList = decisions
     .filter((d) => d.everApproved)
-    .flatMap((d) => d.tasks.filter((t) => !t.pendingEdit && taskVisible(d, t, view, me)));
-  // 表示範囲内の決定事項
+    .flatMap((d) => d.tasks.filter((t) => !t.pendingEdit && !t.archived && taskVisible(d, t, view, me)));
+  // 表示範囲内の決定事項（完了集計はアーカイブ含む／アクティブ判定では別途 !archived で絞る）
   const visibleDecisions = decisions.filter((d) => decisionVisible(d, view, me));
 
-  // 期限超過：実行タスク（個人タスク＋決定タスク）／決定事項
+  // 期限超過：実行タスク（個人タスク＋決定タスク）／決定事項。アーカイブ済みは対象外。
   const overdueTaskCount =
     todos.filter((t) => t.status !== 'done' && isOverdueDue(t.dueDate)).length +
     activeTasks.filter((t) => t.status !== 'done' && isOverdueDue(t.whenDue)).length;
-  const overdueDecisionCount = visibleDecisions.filter((d) => d.status !== 'done' && isOverdueDue(d.dueDate)).length;
+  const overdueDecisionCount = visibleDecisions.filter((d) => !d.archived && d.status !== 'done' && isOverdueDue(d.dueDate)).length;
 
   const overdueIcon = (
     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -83,7 +87,7 @@ export default function DashboardPage() {
   for (const t of todos) {
     if (t.status === 'done' && t.completedAt) completedTimes.push(new Date(t.completedAt).getTime());
   }
-  for (const t of activeTasks) {
+  for (const t of completedTaskList) {
     if (t.status === 'done' && t.completedAt) completedTimes.push(new Date(t.completedAt).getTime());
   }
   const periodCounts = (times: number[]) => [

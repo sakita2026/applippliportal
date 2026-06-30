@@ -26,7 +26,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!decision) return NextResponse.json({ error: '対象の決定事項が見つかりません' }, { status: 404 });
 
     const body = await req.json();
-    const { what, why, who, whereLoc, whenDue, how, departmentId, startDate, projectIds, policyIds, requireApproval } = body;
+    const { what, why, who, whereLoc, whenDue, how, departmentId, category, startDate, projectIds, policyIds, requireApproval } = body;
     if (!what || !String(what).trim()) return NextResponse.json({ error: 'タスク内容（何を）は必須です' }, { status: 400 });
 
     const taskName = String(what).trim();
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         decisionId: id,
         what: taskName,
         why: why ?? null, who: who ?? null, whereLoc: whereLoc ?? null, whenDue: whenDue ?? null,
-        how: how ?? null, departmentId: departmentId ?? null, startDate: startDate ?? null,
+        how: how ?? null, departmentId: departmentId ?? null, category: category ?? null, startDate: startDate ?? null,
         status: 'todo', sortOrder,
         createdBy: username ?? null, // 後追い追加＝追加した本人を作成者に
         pendingEdit: !!requireApproval,
