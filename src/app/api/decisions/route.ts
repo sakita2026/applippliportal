@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
     }
     const body = await req.json();
-    const { title, description, tasks, projectIds, policyIds, departmentId, assigneeUsername, boardOnly, startDate, dueDate } = body;
+    const { title, description, tasks, projectIds, policyIds, departmentId, assigneeUsername, boardOnly, segment, startDate, dueDate } = body;
     if (!title) {
       return NextResponse.json({ error: 'タイトルは必須です' }, { status: 400 });
     }
@@ -114,6 +114,7 @@ export async function POST(req: NextRequest) {
         departmentId: departmentId ?? null,
         assigneeUsername: assigneeUsername ?? null,
         boardOnly: !!boardOnly,
+        segment: segment ?? null,
         startDate: startDate ?? null,
         dueDate: dueDate ?? null,
         tasks: {

@@ -227,6 +227,7 @@ export interface Decision {
   departmentId?: string | null;
   assigneeUsername?: string | null; // 担当者（だれが）
   boardOnly?: boolean;
+  segment?: string | null; // 実行管理集計区分（SegmentOption.code。null=空白）
   deleteRequested?: boolean;
   archived?: boolean;
   everApproved?: boolean;
@@ -264,12 +265,22 @@ export interface CreateDecisionRequest {
   departmentId?: string;
   assigneeUsername?: string;
   boardOnly?: boolean;
+  segment?: string;
   startDate?: string;
   dueDate?: string;
 }
 
-// 集計分類のマスタ
+// 集計分類のマスタ（実行タスク用）
 export interface CategoryOption {
+  id: string;
+  code: string;
+  label: string;
+  sortOrder: number;
+  active: boolean;
+}
+
+// 実行管理集計区分のマスタ（決定事項用）
+export interface SegmentOption {
   id: string;
   code: string;
   label: string;

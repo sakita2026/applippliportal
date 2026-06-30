@@ -23,7 +23,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!username) return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
     const { id } = await params;
     const body = await req.json();
-    const { title, description, departmentId, assigneeUsername, boardOnly, projectIds, policyIds, editReason, startDate, dueDate, newTasks } = body;
+    const { title, description, departmentId, assigneeUsername, boardOnly, segment, projectIds, policyIds, editReason, startDate, dueDate, newTasks } = body;
 
     // 編集前スナップショット（承認待ち中の「編集の取り消し」用）
     const prevSnap = await snapshotDecision(id);
@@ -50,6 +50,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         changes.push({ field: '担当者', before: nm(before.assigneeUsername), after: nm(assigneeUsername || null) });
       }
       if (boardOnly !== undefined && !!boardOnly !== before.boardOnly) changes.push({ field: '取締役会限定', before: before.boardOnly ? 'はい' : 'いいえ', after: boardOnly ? 'はい' : 'いいえ' });
+      if (segment !== undefined && (segment || null) !== before.segment) {
+        const segs = await prisma.segmentOption.findMany();
+        const nm = (v: string | null) => (v ? (segs.find((s) => s.code === v)?.label ?? v) : '（空白）');
+        changes.push({ field: '実行管理集計区分', before: nm(before.segment), after: nm(segment || null) });
+      }
       if (startDate !== undefined && (startDate ?? null) !== before.startDate) changes.push({ field: '開始日', before: before.startDate ?? '', after: startDate ?? '' });
       if (dueDate !== undefined && (dueDate ?? null) !== before.dueDate) changes.push({ field: '完了予定日', before: before.dueDate ?? '', after: dueDate ?? '' });
       if (Array.isArray(projectIds)) {
@@ -112,6 +117,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         ...(departmentId !== undefined ? { departmentId: departmentId ?? null } : {}),
         ...(assigneeUsername !== undefined ? { assigneeUsername: assigneeUsername ?? null } : {}),
         ...(boardOnly !== undefined ? { boardOnly: !!boardOnly } : {}),
+        ...(segment !== undefined ? { segment: segment ?? null } : {}),
         ...(startDate !== undefined ? { startDate: startDate ?? null } : {}),
         ...(dueDate !== undefined ? { dueDate: dueDate ?? null } : {}),
         status: 'pending',

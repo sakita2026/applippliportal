@@ -15,6 +15,7 @@ import { canManageDecisionTask, canManageDecision } from '@/lib/visibility';
 import { approvalRemaining } from '@/lib/approval';
 import { combineDetail } from '@/lib/taskDetail';
 import { categoryLabel, activeCategories } from '@/lib/category';
+import { segmentLabel, activeSegments } from '@/lib/segment';
 import { ScopeControl } from '@/components/ScopeControl';
 import { decisionVisible, defaultView, type View } from '@/lib/visibility';
 
@@ -57,6 +58,7 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
   const [deptId, setDeptId] = useState(initial?.departmentId ?? '');
   const [assignee, setAssignee] = useState(initial?.assigneeUsername ?? '');
   const [boardOnly, setBoardOnly] = useState(initial?.boardOnly ?? false);
+  const [segment, setSegment] = useState(initial?.segment ?? '');
   const [startDate, setStartDate] = useState(initial?.startDate ?? '');
   const [dueDate, setDueDate] = useState(initial?.dueDate ?? '');
   const [editReason, setEditReason] = useState('');
@@ -118,6 +120,7 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
           departmentId: deptId || null,
           assigneeUsername: assignee || null,
           boardOnly: isBoard ? boardOnly : false,
+          segment: segment || null,
           startDate: startDate || null,
           dueDate: dueDate || null,
           editReason: editReason.trim() || undefined,
@@ -145,6 +148,7 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
           departmentId: deptId || undefined,
           assigneeUsername: assignee || undefined,
           boardOnly: isBoard ? boardOnly : false,
+          segment: segment || undefined,
           startDate: startDate || undefined,
           dueDate: dueDate || undefined,
         });
@@ -218,6 +222,15 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
             <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className={fieldCls} style={{ borderColor: 'var(--border-color)' }}>
               <option value="">未設定</option>
               {state.members.map((m) => <option key={m.username} value={m.username}>{m.name}</option>)}
+            </select>
+          </div>
+
+          {/* 実行管理集計区分 */}
+          <div>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">実行管理集計区分</label>
+            <select value={segment} onChange={(e) => setSegment(e.target.value)} className={fieldCls} style={{ borderColor: 'var(--border-color)' }}>
+              <option value="">空白（未選択）</option>
+              {activeSegments(state.segments).map((s) => <option key={s.code} value={s.code}>{s.label}</option>)}
             </select>
           </div>
 
@@ -701,6 +714,9 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId }: { decision
             {decision.departmentId === 'all' && (
               <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-600 border border-rose-200 dark:border-rose-800">📢 全員通達</span>
             )}
+            {segmentLabel(decision.segment, state.segments) && (
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800">🗂 {segmentLabel(decision.segment, state.segments)}</span>
+            )}
           </div>
           {decision.description && (
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1.5 whitespace-pre-wrap">{decision.description}</p>
@@ -916,6 +932,7 @@ export default function DecisionsPage() {
   const [filter, setFilter] = useState<FilterStatus>('incomplete');
   const [boardFilter, setBoardFilter] = useState(false);
   const [overdueFilter, setOverdueFilter] = useState(false);
+  const [segmentFilter, setSegmentFilter] = useState<string>('all'); // 実行管理集計区分での絞り込み（'all'=全て / ''=空白 / code）
   const [period, setPeriod] = useState<Period | null>(null); // 完了の期間絞り込み（ダッシュボードの完了カードから）
   const [view, setView] = useState<View>('mine');
   const [viewInit, setViewInit] = useState(false);
@@ -953,13 +970,15 @@ export default function DecisionsPage() {
     if (!showArchived) list = list.filter((d) => !d.archived);
     if (boardFilter) list = list.filter((d) => d.boardOnly);
     if (overdueFilter) list = list.filter((d) => d.status !== 'done' && isOverdueDue(d.dueDate));
+    // 実行管理集計区分での絞り込み（'all'=全て / ''=空白のみ / それ以外=該当コード）
+    if (segmentFilter !== 'all') list = list.filter((d) => (d.segment ?? '') === segmentFilter);
     if (filter === 'incomplete') list = list.filter((d) => d.status !== 'done');
     else if (filter !== 'all') list = list.filter((d) => d.status === filter);
     // 完了の期間絞り込み（ダッシュボードの完了カードから）：completedAt が期間内のもの
     if (period) { const from = jstPeriodStartMs(period); list = list.filter((d) => d.completedAt && new Date(d.completedAt).getTime() >= from); }
     // 完了（予定）日順：古い順、未設定は末尾
     return [...list].sort((a, b) => (a.dueDate || 'zzzz').localeCompare(b.dueDate || 'zzzz'));
-  }, [scoped, filter, boardFilter, overdueFilter, period]);
+  }, [scoped, filter, boardFilter, overdueFilter, segmentFilter, period]);
 
   const counts = useMemo(() => ({
     all: scoped.length,
@@ -1012,7 +1031,22 @@ export default function DecisionsPage() {
       </div>
 
       {/* 表示範囲（取締役以上=全体/部門、それ以外=自分/自部門）。通達(全員)は常に表示 */}
-      <ScopeControl view={view} setView={setView} user={currentUser} departments={state.departments} />
+      <div className="flex items-center gap-2 flex-wrap">
+        <ScopeControl view={view} setView={setView} user={currentUser} departments={state.departments} />
+        {/* 実行管理集計区分での絞り込み */}
+        <select
+          value={segmentFilter} onChange={(e) => setSegmentFilter(e.target.value)}
+          className="px-2.5 py-1.5 rounded-lg border text-sm bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          style={{ borderColor: 'var(--border-color)' }}
+          title="実行管理集計区分で絞り込み"
+        >
+          <option value="all">区分: すべて</option>
+          <option value="">区分: 空白</option>
+          {[...state.segments].sort((a, b) => a.sortOrder - b.sortOrder).map((s) => (
+            <option key={s.code} value={s.code}>区分: {s.label}{s.active ? '' : '（非表示）'}</option>
+          ))}
+        </select>
+      </div>
 
       {/* フィルタータブ（進捗一覧） */}
       <div className="flex gap-2 flex-wrap">

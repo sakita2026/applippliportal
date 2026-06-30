@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
 import type {
   Todo, TodoStep, CalendarEvent, Priority, TodoStatus, ShareStatus,
-  Decision, DecisionTask, Department, CreateDecisionRequest, Member, CategoryOption,
+  Decision, DecisionTask, Department, CreateDecisionRequest, Member, CategoryOption, SegmentOption,
 } from '@/types';
 
 // State
@@ -14,6 +14,7 @@ interface StoreState {
   departments: Department[];
   members: Member[];
   categories: CategoryOption[];
+  segments: SegmentOption[];
   loading: boolean;
   error: string | null;
 }
@@ -37,6 +38,7 @@ type Action =
   | { type: 'DELETE_DECISION'; payload: string }
   | { type: 'UPDATE_DECISION_TASK'; payload: { decisionId: string; task: DecisionTask } }
   | { type: 'SET_CATEGORIES'; payload: CategoryOption[] }
+  | { type: 'SET_SEGMENTS'; payload: SegmentOption[] }
   | { type: 'SET_DEPARTMENTS'; payload: Department[] }
   | { type: 'ADD_DEPARTMENT'; payload: Department }
   | { type: 'UPDATE_DEPARTMENT'; payload: Department }
@@ -110,6 +112,7 @@ function reducer(state: StoreState, action: Action): StoreState {
         }),
       };
     case 'SET_CATEGORIES': return { ...state, categories: action.payload };
+    case 'SET_SEGMENTS': return { ...state, segments: action.payload };
     case 'SET_DEPARTMENTS': return { ...state, departments: action.payload };
     case 'ADD_DEPARTMENT': return { ...state, departments: [...state.departments, action.payload].sort((a, b) => a.sortOrder - b.sortOrder) };
     case 'UPDATE_DEPARTMENT':
@@ -141,7 +144,7 @@ interface StoreContextValue {
   updateEvent: (event: CalendarEvent) => Promise<void>;
   deleteEvent: (id: string) => Promise<void>;
   addDecision: (data: CreateDecisionRequest) => Promise<Decision>;
-  updateDecision: (id: string, data: { title?: string; description?: string; departmentId?: string | null; assigneeUsername?: string | null; boardOnly?: boolean; projectIds?: string[]; policyIds?: string[]; editReason?: string; startDate?: string | null; dueDate?: string | null; newTasks?: Array<Record<string, unknown>> }) => Promise<void>;
+  updateDecision: (id: string, data: { title?: string; description?: string; departmentId?: string | null; assigneeUsername?: string | null; boardOnly?: boolean; segment?: string | null; projectIds?: string[]; policyIds?: string[]; editReason?: string; startDate?: string | null; dueDate?: string | null; newTasks?: Array<Record<string, unknown>> }) => Promise<void>;
   deleteDecision: (id: string) => Promise<void>;
   approveDecision: (id: string) => Promise<void>;
   completeDecision: (id: string, done: boolean) => Promise<void>;
@@ -164,6 +167,9 @@ interface StoreContextValue {
   refreshCategories: () => Promise<void>;
   addCategory: (data: { code: string; label: string }) => Promise<void>;
   updateCategory: (id: string, data: { label?: string; active?: boolean; sortOrder?: number }) => Promise<void>;
+  refreshSegments: () => Promise<void>;
+  addSegment: (data: { code: string; label: string }) => Promise<void>;
+  updateSegment: (id: string, data: { label?: string; active?: boolean; sortOrder?: number }) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreContextValue | null>(null);
@@ -190,6 +196,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     departments: [],
     members: [],
     categories: [],
+    segments: [],
     loading: true,
     error: null,
   });
@@ -223,6 +230,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       .catch(() => { /* 未作成時は無視 */ });
     apiFetch<CategoryOption[]>('/api/categories')
       .then((categories) => dispatch({ type: 'SET_CATEGORIES', payload: categories }))
+      .catch(() => { /* 未作成時は無視 */ });
+    apiFetch<SegmentOption[]>('/api/segments')
+      .then((segments) => dispatch({ type: 'SET_SEGMENTS', payload: segments }))
       .catch(() => { /* 未作成時は無視 */ });
   }, []);
 
@@ -438,6 +448,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     await refreshCategories();
   }, [refreshCategories]);
 
+  // ── 実行管理集計区分（SegmentOption）── 決定事項用。追加・名称/表示/並び替え（システム管理者のみ：APIで制御）
+  const refreshSegments = useCallback(async () => {
+    const list = await apiFetch<SegmentOption[]>('/api/segments');
+    dispatch({ type: 'SET_SEGMENTS', payload: list });
+  }, []);
+  const addSegment = useCallback(async (data: { code: string; label: string }) => {
+    await apiFetch<SegmentOption>('/api/segments', { method: 'POST', body: JSON.stringify(data) });
+    await refreshSegments();
+  }, [refreshSegments]);
+  const updateSegment = useCallback(async (id: string, data: { label?: string; active?: boolean; sortOrder?: number }) => {
+    await apiFetch<SegmentOption>(`/api/segments/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+    await refreshSegments();
+  }, [refreshSegments]);
+
   return (
     <StoreContext.Provider value={{
       state, addTodo, updateTodo, deleteTodo,
@@ -449,6 +473,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       addDepartment, updateDepartment, deleteDepartment,
       addMember, updateMember, deleteMember,
       refreshCategories, addCategory, updateCategory,
+      refreshSegments, addSegment, updateSegment,
     }}>
       {children}
     </StoreContext.Provider>

@@ -108,6 +108,7 @@ model Decision {
   deleteRequested Boolean     @default(false)  // 削除申請中（承認で実削除）
   archived     Boolean        @default(false)  // アーカイブ（削除されたが完了実績を残すため保持。アクティブ画面では非表示・完了集計には残す）
   everApproved Boolean        @default(false)  // 一度でも承認されたか（再承認待ち中もタスクを稼働継続させる）
+  segment      String?        @db.NVarChar(50)  // 実行管理集計区分（SegmentOption.code を格納。null=空白/未選択）
   startDate    String?        @db.NVarChar(10)  // 開始日 YYYY-MM-DD
   dueDate      String?        @db.NVarChar(10)  // 完了予定日 YYYY-MM-DD
   completedAt  DateTime?                         // 完了にした日時（done になった時刻。未完了に戻すと null）
@@ -227,6 +228,16 @@ model CategoryOption {
   label     String   @db.NVarChar(100)
   sortOrder Int      @default(0)
   active    Boolean  @default(true)  // 非表示にすると新規プルダウンに出ない（既存タスクの値は保持）
+  createdAt DateTime @default(now())
+}
+
+// 実行管理集計区分（決定事項に付与する集計区分のマスタ。CategoryOption と同形・別マスタ）
+model SegmentOption {
+  id        String   @id @default(cuid())
+  code      String   @unique @db.NVarChar(50)
+  label     String   @db.NVarChar(100)
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)  // 非表示にすると新規プルダウンに出ない（既存決定事項の値は保持）
   createdAt DateTime @default(now())
 }
 
