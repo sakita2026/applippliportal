@@ -10,7 +10,7 @@ export function isDirectorPlus(u?: Member | null): boolean {
  * 担当者(who) ＋ 担当部長（対象部署の部長）＋ 取締役（代表取締役含む）のみ。
  * deptOverride に決定事項の部門を渡すと、タスク部門が無い時のフォールバックに使う。
  */
-export type ManageActor = { username: string; position?: string | null; departmentId?: string | null; isDirector?: boolean | null; isRepresentative?: boolean | null } | null | undefined;
+export type ManageActor = { username: string; position?: string | null; departmentId?: string | null; isDirector?: boolean | null; isRepresentative?: boolean | null; isAuditor?: boolean | null } | null | undefined;
 
 export function canManageDecisionTask(
   t: { who?: string | null; departmentId?: string | null; createdBy?: string | null },
@@ -19,7 +19,7 @@ export function canManageDecisionTask(
   opts?: { includeCreator?: boolean },
 ): boolean {
   if (!u) return false;
-  if (u.isDirector || u.isRepresentative) return true;                 // 取締役・代表取締役
+  if (u.isDirector || u.isRepresentative || u.isAuditor) return true;  // 取締役・代表取締役・監査役（編集は取締役同等。中止/削除は別途ブロック）
   if (t.who && t.who === u.username) return true;     // 担当者
   // 編集は入力者（起案者）も可。削除は includeCreator=false で起案者を除外（担当者・担当部長・取締役のみ）。
   if (opts?.includeCreator !== false && t.createdBy && t.createdBy === u.username) return true; // 入力者（起案者）
@@ -40,7 +40,7 @@ export function canManageDecision(
   assigneeDepartmentId?: string | null,
 ): boolean {
   if (!u) return false;
-  if (u.isDirector || u.isRepresentative) return true;                       // 取締役・代表取締役
+  if (u.isDirector || u.isRepresentative || u.isAuditor) return true;        // 取締役・代表取締役・監査役（編集は取締役同等。中止/削除は別途ブロック）
   if (d.createdBy && d.createdBy === u.username) return true;                 // 入力者（起案者）
   if (d.assigneeUsername && d.assigneeUsername === u.username) return true;   // 担当者
   const dept = d.departmentId && d.departmentId !== 'all' ? d.departmentId : (assigneeDepartmentId ?? null);
@@ -58,7 +58,7 @@ export function canManageTodo(
   ownerDepartmentId?: string | null,
 ): boolean {
   if (!u) return false;
-  if (u.isDirector || u.isRepresentative) return true;
+  if (u.isDirector || u.isRepresentative || u.isAuditor) return true;
   if (todo.userId && todo.userId === u.username) return true; // 担当者=所有者
   const dept = todo.departmentId ?? ownerDepartmentId ?? null;
   if (u.position === 'manager' && u.departmentId && dept === u.departmentId) return true;
@@ -67,7 +67,8 @@ export function canManageTodo(
 
 /** 役職に応じた初期表示範囲：取締役以上=全体／部長=自部門／一般社員=自分 */
 export function defaultView(u?: Member | null): View {
-  if (isDirectorPlus(u)) return 'all';
+  if (isDirectorPlus(u) || u?.isAuditor) return 'all'; // 監査役も全体閲覧
+
   if (u?.position === 'manager') return 'dept';
   return 'mine';
 }

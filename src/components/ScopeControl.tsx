@@ -11,7 +11,7 @@ import { isDirectorPlus, type View } from '@/lib/visibility';
 export function ScopeControl({
   view, setView, user, departments,
 }: { view: View; setView: (v: View) => void; user: Member | null; departments: Department[] }) {
-  if (isDirectorPlus(user)) {
+  if (isDirectorPlus(user) || user?.isAuditor) { // 監査役も全体/部門で閲覧範囲を切替可
     return (
       <div className="flex items-center gap-2">
         <span className="text-xs text-slate-400">表示:</span>

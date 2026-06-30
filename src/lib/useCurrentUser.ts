@@ -39,6 +39,7 @@ export function useCurrentUser(): Member | null {
       isDirector: false,
       isRepresentative: false,
       isAdvisor: false,
+      isAuditor: false,
       active: true,
     }
   }, [state.members])

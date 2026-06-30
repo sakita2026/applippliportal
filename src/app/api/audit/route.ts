@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   try {
     const [logs, dir] = await Promise.all([
       prisma.auditLog.findMany({ orderBy: { createdAt: 'desc' }, take: 500 }),
-      fetchDirectory().catch(() => ({ members: [] as Array<{ username: string; name: string; departmentId: string | null; position?: string | null; isDirector?: boolean; isRepresentative?: boolean; isAdvisor?: boolean }>, departments: [] as Array<{ id: string; name: string }> })),
+      fetchDirectory().catch(() => ({ members: [] as Array<{ username: string; name: string; departmentId: string | null; position?: string | null; isDirector?: boolean; isRepresentative?: boolean; isAdvisor?: boolean; isAuditor?: boolean }>, departments: [] as Array<{ id: string; name: string }> })),
     ]);
     const memberOf = (u: string) => dir.members.find((m) => m.username === u);
     const deptName = (id: string | null | undefined) => (id ? (dir.departments.find((d) => d.id === id)?.name ?? id) : '');
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
 
     // 閲覧者の役職で可視範囲を決定
     const me = memberOf(username);
-    const isBoard = !!me && (!!me.isDirector || !!me.isRepresentative || !!me.isAdvisor); // 取締役会メンバー=全件
+    const isBoard = !!me && (!!me.isDirector || !!me.isRepresentative || !!me.isAdvisor || !!me.isAuditor); // 取締役会メンバー・監査役=全件閲覧
     const isManager = me?.position === 'manager'; // 部長=自部門＋本人関与
     const myDept = me?.departmentId ?? null;
     const split = (s: string | null | undefined) => (s ? s.split(',').filter(Boolean) : []);

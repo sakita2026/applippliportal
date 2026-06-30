@@ -7,14 +7,14 @@ const SECRET = process.env.ORG_DIRECTORY_SECRET || '';
 type OrgMember = {
   id: string; username: string; name: string; initials: string; email: string | null;
   authType: string; isSuperAdmin: boolean; departmentId: string | null;
-  position: string | null; isDirector: boolean; isRepresentative: boolean; isAdvisor: boolean; active: boolean;
+  position: string | null; isDirector: boolean; isRepresentative: boolean; isAdvisor: boolean; isAuditor: boolean; active: boolean;
 };
 type OrgDept = { id: string; name: string; sortOrder: number };
 
 export type WpMember = {
   id: string; username: string; name: string; initials: string; email: string | null;
   authType: string; role: 'admin' | 'member'; departmentId: string | null;
-  position: string | null; isDirector: boolean; isRepresentative: boolean; isAdvisor: boolean; active: boolean;
+  position: string | null; isDirector: boolean; isRepresentative: boolean; isAdvisor: boolean; isAuditor: boolean; active: boolean;
 };
 
 let cache: { at: number; members: WpMember[]; departments: OrgDept[] } | null = null;
@@ -31,7 +31,7 @@ export async function fetchDirectory(): Promise<{ members: WpMember[]; departmen
   const members: WpMember[] = data.members.map((m) => ({
     id: m.id, username: m.username, name: m.name, initials: m.initials, email: m.email,
     authType: m.authType, role: m.isSuperAdmin ? 'admin' : 'member', departmentId: m.departmentId,
-    position: m.position, isDirector: m.isDirector, isRepresentative: m.isRepresentative, isAdvisor: m.isAdvisor, active: m.active,
+    position: m.position, isDirector: m.isDirector, isRepresentative: m.isRepresentative, isAdvisor: m.isAdvisor, isAuditor: !!m.isAuditor, active: m.active,
   }));
   cache = { at: Date.now(), members, departments: data.departments };
   return { members, departments: data.departments };

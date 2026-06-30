@@ -73,7 +73,8 @@ export default function ProjectsPage() {
   const [projPolicy, setProjPolicy] = useState('');
   const me = useCurrentUser();
   const isDirector = !!me?.isDirector || !!me?.isRepresentative; // 代表取締役も取締役相当
-  const isManager = me?.position === 'manager';
+  // 監査役は方針・プロジェクトについて部長相当（自部門のプロジェクトを作成・編集可。承認・削除は不可＝isDirectorに含めない）
+  const isManager = me?.position === 'manager' || !!me?.isAuditor;
   // プロジェクトの担当部長/取締役判定（対象部門の部長 or 取締役）
   const canManageProj = useCallback(
     (deptId: string | null | undefined) => isDirector || (isManager && !!me?.departmentId && deptId === me.departmentId),
@@ -102,7 +103,8 @@ export default function ProjectsPage() {
   // 方針ビジュアルは全員が全方針を概観できる（管理タブの表示・権限は変更しない）
   const vizPolicies = policies;
   const visibleProjects = useMemo(() => view === 'all' ? projects : projects.filter((p) => visProj.has(p.id)), [projects, visProj, view]);
-  const decVisible = useCallback((d: Decision) => decisionVisible(d, view, me), [view, me]);
+  // アーカイブ済み決定（削除済み・完了実績保持）は方針/PJのビジュアルには出さない
+  const decVisible = useCallback((d: Decision) => !d.archived && decisionVisible(d, view, me), [view, me]);
   // 方針に紐づくが「プロジェクト指定なし」の決定事項（プロジェクト未割当）
   const noProjectDecisions = useCallback(
     (polId: string) => decisions.filter((d) => decVisible(d) && (d.projects?.length ?? 0) === 0 && d.policies?.some((pl) => pl.policyId === polId)),
