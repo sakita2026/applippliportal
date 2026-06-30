@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
 import type {
   Todo, TodoStep, CalendarEvent, Priority, TodoStatus, ShareStatus,
-  Decision, DecisionTask, Department, CreateDecisionRequest, Member,
+  Decision, DecisionTask, Department, CreateDecisionRequest, Member, CategoryOption,
 } from '@/types';
 
 // State
@@ -13,6 +13,7 @@ interface StoreState {
   decisions: Decision[];
   departments: Department[];
   members: Member[];
+  categories: CategoryOption[];
   loading: boolean;
   error: string | null;
 }
@@ -35,6 +36,7 @@ type Action =
   | { type: 'UPDATE_DECISION'; payload: Decision }
   | { type: 'DELETE_DECISION'; payload: string }
   | { type: 'UPDATE_DECISION_TASK'; payload: { decisionId: string; task: DecisionTask } }
+  | { type: 'SET_CATEGORIES'; payload: CategoryOption[] }
   | { type: 'SET_DEPARTMENTS'; payload: Department[] }
   | { type: 'ADD_DEPARTMENT'; payload: Department }
   | { type: 'UPDATE_DEPARTMENT'; payload: Department }
@@ -107,6 +109,7 @@ function reducer(state: StoreState, action: Action): StoreState {
           return { ...d, tasks, status };
         }),
       };
+    case 'SET_CATEGORIES': return { ...state, categories: action.payload };
     case 'SET_DEPARTMENTS': return { ...state, departments: action.payload };
     case 'ADD_DEPARTMENT': return { ...state, departments: [...state.departments, action.payload].sort((a, b) => a.sortOrder - b.sortOrder) };
     case 'UPDATE_DEPARTMENT':
@@ -146,6 +149,8 @@ interface StoreContextValue {
   undoEditDecision: (id: string) => Promise<void>;
   requestDeleteDecision: (decision: Decision) => Promise<void>;
   cancelDeleteDecision: (decision: Decision) => Promise<void>;
+  requestCancelTask: (taskId: string) => Promise<void>;
+  undoRequestCancelTask: (taskId: string) => Promise<void>;
   updateDecisionTask: (decisionId: string, task: DecisionTask) => Promise<void>;
   editDecisionTask: (decisionId: string, task: DecisionTask & { projectIds?: string[]; policyIds?: string[] }) => Promise<void>;
   addDecisionTask: (decisionId: string, task: Partial<DecisionTask> & { what: string; projectIds?: string[]; policyIds?: string[] }, requireApproval?: boolean) => Promise<void>;
@@ -156,6 +161,9 @@ interface StoreContextValue {
   addMember: (data: Partial<Member> & { username: string; name: string; password?: string }) => Promise<void>;
   updateMember: (id: string, data: Partial<Member> & { password?: string }) => Promise<void>;
   deleteMember: (id: string) => Promise<void>;
+  refreshCategories: () => Promise<void>;
+  addCategory: (data: { code: string; label: string }) => Promise<void>;
+  updateCategory: (id: string, data: { label?: string; active?: boolean; sortOrder?: number }) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreContextValue | null>(null);
@@ -181,6 +189,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     decisions: [],
     departments: [],
     members: [],
+    categories: [],
     loading: true,
     error: null,
   });
@@ -211,6 +220,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       .catch(() => { /* 未作成時は無視 */ });
     apiFetch<Member[]>('/api/members')
       .then((members) => dispatch({ type: 'SET_MEMBERS', payload: members }))
+      .catch(() => { /* 未作成時は無視 */ });
+    apiFetch<CategoryOption[]>('/api/categories')
+      .then((categories) => dispatch({ type: 'SET_CATEGORIES', payload: categories }))
       .catch(() => { /* 未作成時は無視 */ });
   }, []);
 
@@ -315,22 +327,38 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'UPDATE_DECISION', payload: updated });
   }, []);
 
+  // 決定事項の中止/中止解除（双方向2名承認フロー）。応答（cancelled/restored/deleteRequested）を反映するため最新を再取得。
+  const refreshDecisions = useCallback(async () => {
+    const decisions = await apiFetch<Decision[]>('/api/decisions').catch(() => null);
+    if (decisions) dispatch({ type: 'SET_DECISIONS', payload: decisions });
+  }, []);
+
   const requestDeleteDecision = useCallback(async (decision: Decision) => {
-    const res = await apiFetch<{ deleted?: boolean }>('/api/deletions', {
+    await apiFetch('/api/deletions', {
       method: 'POST',
       body: JSON.stringify({ entityType: 'decision', entityId: decision.id }),
     });
-    if (res.deleted) dispatch({ type: 'DELETE_DECISION', payload: decision.id });
-    else dispatch({ type: 'UPDATE_DECISION', payload: { ...decision, deleteRequested: true } });
-  }, []);
+    await refreshDecisions();
+  }, [refreshDecisions]);
 
   const cancelDeleteDecision = useCallback(async (decision: Decision) => {
     await apiFetch('/api/deletions', {
       method: 'POST',
       body: JSON.stringify({ entityType: 'decision', entityId: decision.id, cancel: true }),
     });
-    dispatch({ type: 'UPDATE_DECISION', payload: { ...decision, deleteRequested: false } });
-  }, []);
+    await refreshDecisions();
+  }, [refreshDecisions]);
+
+  // 実行タスクの中止/中止解除（申請＋本人承認）。cancel=true は申請の取り下げ。
+  const requestCancelTask = useCallback(async (taskId: string) => {
+    await apiFetch('/api/deletions', { method: 'POST', body: JSON.stringify({ entityType: 'decisionTask', entityId: taskId }) });
+    await refreshDecisions();
+  }, [refreshDecisions]);
+
+  const undoRequestCancelTask = useCallback(async (taskId: string) => {
+    await apiFetch('/api/deletions', { method: 'POST', body: JSON.stringify({ entityType: 'decisionTask', entityId: taskId, cancel: true }) });
+    await refreshDecisions();
+  }, [refreshDecisions]);
 
   const updateDecisionTask = useCallback(async (decisionId: string, task: DecisionTask) => {
     const updated = await apiFetch<DecisionTask>(`/api/decisions/${decisionId}/tasks/${task.id}`, {
@@ -396,6 +424,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'DELETE_MEMBER', payload: id });
   }, []);
 
+  // ── 集計分類（CategoryOption）── 追加・名称/表示/並び替え（システム管理者のみ：APIで制御）
+  const refreshCategories = useCallback(async () => {
+    const list = await apiFetch<CategoryOption[]>('/api/categories');
+    dispatch({ type: 'SET_CATEGORIES', payload: list });
+  }, []);
+  const addCategory = useCallback(async (data: { code: string; label: string }) => {
+    await apiFetch<CategoryOption>('/api/categories', { method: 'POST', body: JSON.stringify(data) });
+    await refreshCategories();
+  }, [refreshCategories]);
+  const updateCategory = useCallback(async (id: string, data: { label?: string; active?: boolean; sortOrder?: number }) => {
+    await apiFetch<CategoryOption>(`/api/categories/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+    await refreshCategories();
+  }, [refreshCategories]);
+
   return (
     <StoreContext.Provider value={{
       state, addTodo, updateTodo, deleteTodo,
@@ -403,8 +445,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       addEvent, updateEvent, deleteEvent,
       addDecision, updateDecision, deleteDecision, approveDecision, completeDecision, undoApproveDecision, undoEditDecision, updateDecisionTask,
       editDecisionTask, addDecisionTask, undoEditTask, requestDeleteDecision, cancelDeleteDecision,
+      requestCancelTask, undoRequestCancelTask,
       addDepartment, updateDepartment, deleteDepartment,
       addMember, updateMember, deleteMember,
+      refreshCategories, addCategory, updateCategory,
     }}>
       {children}
     </StoreContext.Provider>

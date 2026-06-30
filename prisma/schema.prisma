@@ -106,6 +106,7 @@ model Decision {
   approvedBy   String?        @db.NVarChar(50) // 後方互換（最終承認者）
   approvedAt   DateTime?
   deleteRequested Boolean     @default(false)  // 削除申請中（承認で実削除）
+  archived     Boolean        @default(false)  // アーカイブ（削除されたが完了実績を残すため保持。アクティブ画面では非表示・完了集計には残す）
   everApproved Boolean        @default(false)  // 一度でも承認されたか（再承認待ち中もタスクを稼働継続させる）
   startDate    String?        @db.NVarChar(10)  // 開始日 YYYY-MM-DD
   dueDate      String?        @db.NVarChar(10)  // 完了予定日 YYYY-MM-DD
@@ -219,6 +220,16 @@ model DecisionProject {
 }
 
 // 決定事項に紐づく 5W1H タスク
+// 集計分類のマスタ（システム管理者が /settings で管理。code で一意管理し誤作動・重複を防ぐ）
+model CategoryOption {
+  id        String   @id @default(cuid())
+  code      String   @unique @db.NVarChar(50)
+  label     String   @db.NVarChar(100)
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)  // 非表示にすると新規プルダウンに出ない（既存タスクの値は保持）
+  createdAt DateTime @default(now())
+}
+
 model DecisionTask {
   id           String   @id @default(cuid())
   decisionId   String
@@ -229,11 +240,14 @@ model DecisionTask {
   whenDue      String?  @db.NVarChar(10)   // いつ（期限 YYYY-MM-DD）
   how          String?  @db.NVarChar(1000) // どうやって
   departmentId String?  @db.NVarChar(50)   // 部門
+  category     String?  @db.NVarChar(50)   // 集計分類（CategoryOption.code を格納。null=空白/未設定）
   status       String   @db.NVarChar(20)   // todo | in_progress | done
   completedAt  DateTime?                    // 完了にした日時（done になった時刻。未完了に戻すと null）
   startDate    String?  @db.NVarChar(10)    // 開始日 YYYY-MM-DD
   createdBy    String?  @db.NVarChar(50)    // 実行タスクの作成者 username（決定同時作成＝決定の起案者／後追い追加＝追加した人）
   pendingEdit  Boolean  @default(false)     // このタスク自体が再承認待ち（承認まで実行タスク一覧で非表示）
+  deleteRequested Boolean @default(false)   // 中止申請中（双方向：中止/中止解除。archived で方向を判別）
+  archived     Boolean  @default(false)     // 中止確定（物理削除しない。アクティブ集計から除外・中止一覧/決定内で閲覧のみ）
   prevState    String?  @db.NVarChar(Max)   // タスク編集前スナップショット(JSON)。承認待ち中のみ「編集の取り消し」に使用
   editedBy     String?  @db.NVarChar(50)    // このタスクを直近に編集した人（取り消しはこの人のみ可）
   sortOrder    Int      @default(0)

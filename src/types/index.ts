@@ -174,6 +174,7 @@ export interface Member {
   isDirector: boolean;
   isRepresentative: boolean;
   isAdvisor: boolean;
+  isAuditor: boolean;
   active: boolean;
 }
 
@@ -188,12 +189,16 @@ export interface DecisionTask {
   whenDue?: string;      // いつ（期限 YYYY-MM-DD）
   how?: string;          // どうやって
   departmentId?: string; // 部門
+  category?: string | null; // 集計分類（CategoryOption.code）
   status: TodoStatus;
   completedAt?: string | null; // 完了日時
   createdBy?: string | null; // 実行タスクの作成者 username
   startDate?: string | null; // 開始日 YYYY-MM-DD（whenDue を完了予定日として扱う）
   pendingEdit?: boolean;  // このタスク自体が再承認待ち（承認まで一覧で非表示）
   editedBy?: string | null; // このタスクを直近に編集した人（取り消しはこの人のみ可）
+  deleteRequested?: boolean; // 中止申請中（双方向：中止/中止解除。archived で方向を判別）
+  archived?: boolean;        // 中止確定（物理削除しない。アクティブ集計から除外）
+  deleteApprovals?: DecisionApproval[]; // 中止/中止解除の承認進捗（誰が承認したか）
   sortOrder: number;
   createdAt: string;
   projects?: DecisionProjectLink[];
@@ -223,6 +228,7 @@ export interface Decision {
   assigneeUsername?: string | null; // 担当者（だれが）
   boardOnly?: boolean;
   deleteRequested?: boolean;
+  archived?: boolean;
   everApproved?: boolean;
   hasPrevState?: boolean;     // 承認待ち中に「編集の取り消し」が可能か
   editedBy?: string | null;   // 直近に編集した人（取り消しはこの人のみ可）
@@ -260,4 +266,13 @@ export interface CreateDecisionRequest {
   boardOnly?: boolean;
   startDate?: string;
   dueDate?: string;
+}
+
+// 集計分類のマスタ
+export interface CategoryOption {
+  id: string;
+  code: string;
+  label: string;
+  sortOrder: number;
+  active: boolean;
 }

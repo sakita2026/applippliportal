@@ -4,6 +4,8 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useStore, PRIORITY_LABELS, STATUS_LABELS, resolveMemberName } from '@/lib/store';
 import { jstToday, jstDateStr, isOverdueDue, jstPeriodStartMs, type Period } from '@/lib/date';
+import { combineDetail } from '@/lib/taskDetail';
+import { categoryLabel, activeCategories } from '@/lib/category';
 import type { Priority, TodoStatus, Todo, TodoStep, DecisionTask } from '@/types';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -56,9 +58,9 @@ function TodoForm({
   const [status] = useState<TodoStatus>(initial?.status ?? 'todo');
   const [dueDate, setDueDate] = useState(initial?.dueDate ?? '');
   const [startDate, setStartDate] = useState(initial?.startDate ?? '');
-  const [whereLoc, setWhereLoc] = useState(initial?.whereLoc ?? '');
-  const [why, setWhy] = useState(initial?.why ?? '');
-  const [how, setHow] = useState(initial?.how ?? '');
+  const [whereLoc] = useState('');
+  const [why, setWhy] = useState(combineDetail(initial ?? {}));
+  const [how] = useState('');
   const [isShared, setIsShared] = useState(initial?.isShared ?? false);
   const [saving, setSaving] = useState(false);
   // 所有者（担当/部門の基準）。新規=ログイン者、編集=元の所有者。編集者で上書きしない。
@@ -128,12 +130,8 @@ function TodoForm({
             <label className="text-xs text-slate-400 flex flex-col gap-0.5">完了予定日
               <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
                 className="px-3 py-2 rounded-xl border text-sm bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400" style={{ borderColor: 'var(--border-color)' }} /></label>
-            <input placeholder="どこで" value={whereLoc} onChange={(e) => setWhereLoc(e.target.value)}
-              className="px-3 py-2 rounded-xl border text-sm bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400" style={{ borderColor: 'var(--border-color)' }} />
-            <input placeholder="なぜ" value={why} onChange={(e) => setWhy(e.target.value)}
-              className="px-3 py-2 rounded-xl border text-sm bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400" style={{ borderColor: 'var(--border-color)' }} />
-            <input placeholder="どうやって" value={how} onChange={(e) => setHow(e.target.value)}
-              className="col-span-2 px-3 py-2 rounded-xl border text-sm bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400" style={{ borderColor: 'var(--border-color)' }} />
+            <textarea placeholder="目的・手法詳細など" value={why} onChange={(e) => setWhy(e.target.value)} rows={5}
+              className="col-span-2 resize-none overflow-y-auto px-3 py-2 rounded-xl border text-sm bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400" style={{ borderColor: 'var(--border-color)' }} />
           </div>
 
           {/* 共有 */}
@@ -310,10 +308,8 @@ function TodoItem({ todo, onEdit, onDelete, onToggle, currentUsername }: {
                 {isOverdue && '⚠ '}完了予定 {format(new Date(todo.dueDate + 'T00:00:00'), 'M月d日', { locale: ja })}
               </span>
             )}
-            {(todo.why || todo.whereLoc || todo.how) && (
-              <span className="text-slate-400">
-                {todo.whereLoc && `／場所: ${todo.whereLoc}`}{todo.why && `／理由: ${todo.why}`}{todo.how && `／方法: ${todo.how}`}
-              </span>
+            {combineDetail(todo) && (
+              <span className="text-slate-400">／目的・手法詳細: {combineDetail(todo)}</span>
             )}
             <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
               todo.status === 'done' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500' :
@@ -392,7 +388,7 @@ function TodoItem({ todo, onEdit, onDelete, onToggle, currentUsername }: {
 type FilterView = 'mine' | 'shared';
 type FilterType = 'all' | 'todo' | 'decision';
 
-type ActiveDecisionTask = DecisionTask & { decisionTitle: string; boardOnly?: boolean; decisionCreatedBy?: string | null; decisionDepartmentId?: string | null };
+type ActiveDecisionTask = DecisionTask & { decisionTitle: string; boardOnly?: boolean; decisionCreatedBy?: string | null; decisionDepartmentId?: string | null; decisionArchived?: boolean };
 
 const DT_STATUS: TodoStatus[] = ['todo', 'in_progress', 'done'];
 
@@ -406,16 +402,16 @@ function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
   const [editing, setEditing] = useState(false);
   const [editErr, setEditErr] = useState('');
   const [draft, setDraft] = useState({
-    what: task.what, why: task.why ?? '', who: task.who ?? '', whereLoc: task.whereLoc ?? '',
-    whenDue: task.whenDue ?? '', how: task.how ?? '', departmentId: task.departmentId ?? '', startDate: task.startDate ?? '',
+    what: task.what, why: combineDetail(task), who: task.who ?? '', whereLoc: '',
+    whenDue: task.whenDue ?? '', how: '', departmentId: task.departmentId ?? '', category: task.category ?? '', startDate: task.startDate ?? '',
   });
-  const [projList, setProjList] = useState<{ id: string; name: string }[]>([]);
+  const [projList, setProjList] = useState<{ id: string; name: string; policyId?: string | null }[]>([]);
   const [polList, setPolList] = useState<{ id: string; name: string }[]>([]);
   const [selProjects, setSelProjects] = useState<string[]>(task.projects?.map((p) => p.projectId) ?? []);
   const [selPolicies, setSelPolicies] = useState<string[]>(task.policies?.map((p) => p.policyId) ?? []);
   const isOverdue = task.status !== 'done' && isOverdueDue(task.whenDue);
-  // 編集・ステータス変更は 担当者＋担当部長＋取締役 のみ
-  const canEdit = canManageDecisionTask(task, me, task.decisionDepartmentId);
+  // 編集・ステータス変更は 担当者＋担当部長＋取締役 のみ。中止中の決定事項は閲覧のみ（操作不可）。
+  const canEdit = !task.decisionArchived && canManageDecisionTask(task, me, task.decisionDepartmentId);
   const efld = 'w-full px-2 py-1.5 rounded-lg border text-xs bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-400';
 
   const startEdit = () => {
@@ -426,6 +422,21 @@ function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
   const toggle = (arr: string[], set: (v: string[]) => void, id: string) => {
     if (arr.includes(id)) set(arr.filter((x) => x !== id));
     else if (arr.length < 5) set([...arr, id]);
+  };
+  // プロジェクト選択：選択時は紐づく方針を自動チェック／解除時は（他に同じ方針を持つ選択中PJが無ければ）方針も外す
+  const selectProj = (id: string) => {
+    const polId = projList.find((p) => p.id === id)?.policyId;
+    if (selProjects.includes(id)) {
+      const next = selProjects.filter((x) => x !== id);
+      setSelProjects(next);
+      if (polId && !next.some((pid) => projList.find((p) => p.id === pid)?.policyId === polId)) {
+        setSelPolicies(selPolicies.filter((x) => x !== polId));
+      }
+      return;
+    }
+    if (selProjects.length >= 5) return;
+    setSelProjects([...selProjects, id]);
+    if (polId && !selPolicies.includes(polId) && selPolicies.length < 5) setSelPolicies([...selPolicies, polId]);
   };
 
   const changeStatus = async (status: TodoStatus) => {
@@ -442,9 +453,10 @@ function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
     try {
       await editDecisionTask(task.decisionId, {
         ...task,
-        what: draft.what.trim(), why: draft.why.trim() || undefined, who: draft.who || undefined,
-        whereLoc: draft.whereLoc.trim() || undefined, whenDue: draft.whenDue || undefined,
-        how: draft.how.trim() || undefined, departmentId: draft.departmentId || undefined,
+        what: draft.what.trim(), why: draft.why.trim(), who: draft.who || undefined,
+        whereLoc: '', whenDue: draft.whenDue || undefined,
+        how: '', departmentId: draft.departmentId || undefined,
+        category: draft.category || null,
         startDate: draft.startDate || undefined,
         projectIds: selProjects, policyIds: selPolicies,
       } as DecisionTask & { projectIds: string[]; policyIds: string[] });
@@ -522,6 +534,7 @@ function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
             )}
             {task.who && <span>担当: {resolveMemberName(state.members, task.who)}</span>}
             {task.departmentId && <span>部門: {getDepartmentName(task.departmentId, state.departments)}</span>}
+            {categoryLabel(task.category, state.categories) && <span className="text-violet-600">🏷 {categoryLabel(task.category, state.categories)}</span>}
             {task.decisionCreatedBy && <span>決定作成: {resolveMemberName(state.members, task.decisionCreatedBy)}</span>}
             {task.createdBy && <span>タスク作成: {resolveMemberName(state.members, task.createdBy)}</span>}
           </div>
@@ -548,7 +561,7 @@ function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
           {/* 第1段：決定事項 */}
           {open && (
             <div className="mt-2 pt-2 border-t text-xs text-slate-500 dark:text-slate-400 space-y-1" style={{ borderColor: 'var(--border-color)' }}>
-              <p>決定事項: <Link href="/decisions" className="text-indigo-500 hover:underline">{task.decisionTitle}</Link></p>
+              <p>決定事項: <Link href={task.decisionArchived ? '/cancelled' : `/decisions?dec=${task.decisionId}`} className="text-indigo-500 hover:underline">{task.decisionTitle}</Link>{task.decisionArchived && <span className="ml-1 text-xs text-rose-600">🚫 中止中</span>}</p>
               {task.decisionCreatedBy && <p>決定事項作成者: {resolveMemberName(state.members, task.decisionCreatedBy)}</p>}
               {/* 第2段トグル：5W1H（実行タスク）。決定事項は残したまま展開 */}
               <button onClick={() => setTaskOpen((o) => !o)} className="flex items-center gap-1 text-indigo-500 hover:underline mt-1">
@@ -557,15 +570,19 @@ function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
               </button>
               {taskOpen && !editing && (
                 <div className="mt-1 pl-3 border-l-2 space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                  <p>内容: {task.what}</p>
+                  {task.who && <p>担当（誰が）: {resolveMemberName(state.members, task.who)}</p>}
+                  {task.departmentId && <p>部門: {getDepartmentName(task.departmentId, state.departments)}</p>}
+                  {categoryLabel(task.category, state.categories) && <p>集計分類: {categoryLabel(task.category, state.categories)}</p>}
                   {task.startDate && <p>開始日: {task.startDate}</p>}
                   {task.whenDue && <p>完了予定日: {task.whenDue}</p>}
-                  {task.why && <p>なぜ: {task.why}</p>}
-                  {task.whereLoc && <p>どこで: {task.whereLoc}</p>}
-                  {task.how && <p>どうやって: {task.how}</p>}
+                  {combineDetail(task) && <p className="whitespace-pre-wrap">目的・手法詳細: {combineDetail(task)}</p>}
+                  {(task.policies?.length ?? 0) > 0 && <p>方針: {task.policies!.map((p) => p.policy.name).join('、')}</p>}
+                  {(task.projects?.length ?? 0) > 0 && <p>プロジェクト: {task.projects!.map((p) => p.project.name).join('、')}</p>}
                   {task.createdBy && <p>実行タスク作成者: {resolveMemberName(state.members, task.createdBy)}</p>}
                   {canEdit
                     ? <button onClick={startEdit} className="text-indigo-500 hover:underline mt-1">5W1H・方針・プロジェクトを編集（編集すると再承認になります）</button>
-                    : <p className="text-slate-400 mt-1">編集は担当者・担当部長・取締役のみ可能です</p>}
+                    : <p className="text-slate-400 mt-1">{task.decisionArchived ? '中止中のため閲覧のみ（編集不可）' : '編集は担当者・担当部長・取締役のみ可能です'}</p>}
                 </div>
               )}
             </div>
@@ -582,14 +599,27 @@ function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
                   <option value="">部門</option>
                   {state.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
+                <select className={efld} style={{ borderColor: 'var(--border-color)' }} value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })}>
+                  <option value="">集計分類（空白）</option>
+                  {activeCategories(state.categories).map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
+                </select>
                 <label className="text-xs text-slate-400 flex flex-col gap-0.5">開始日
                   <input type="date" className={efld} style={{ borderColor: 'var(--border-color)' }} value={draft.startDate} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} /></label>
                 <label className="text-xs text-slate-400 flex flex-col gap-0.5">完了予定日
                   <input type="date" className={efld} style={{ borderColor: 'var(--border-color)' }} value={draft.whenDue} onChange={(e) => setDraft({ ...draft, whenDue: e.target.value })} /></label>
-                <input className={efld} style={{ borderColor: 'var(--border-color)' }} placeholder="どこで" value={draft.whereLoc} onChange={(e) => setDraft({ ...draft, whereLoc: e.target.value })} />
-                <input className={efld} style={{ borderColor: 'var(--border-color)' }} placeholder="なぜ" value={draft.why} onChange={(e) => setDraft({ ...draft, why: e.target.value })} />
-                <input className={efld} style={{ borderColor: 'var(--border-color)' }} placeholder="どうやって" value={draft.how} onChange={(e) => setDraft({ ...draft, how: e.target.value })} />
+                <textarea rows={5} className={`${efld} resize-none overflow-y-auto`} style={{ borderColor: 'var(--border-color)' }} placeholder="目的・手法詳細など" value={draft.why} onChange={(e) => setDraft({ ...draft, why: e.target.value })} />
               </div>
+              {projList.length > 0 && (
+                <div>
+                  <p className="text-xs text-slate-400 mb-1">プロジェクト（最大5）</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {projList.map((p) => (
+                      <button key={p.id} type="button" onClick={() => selectProj(p.id)}
+                        className={`px-2 py-0.5 rounded-full text-xs border ${selProjects.includes(p.id) ? 'bg-sky-500 text-white border-sky-500' : 'text-slate-500 border-slate-200 dark:border-slate-700'}`}>{p.name}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {polList.length > 0 && (
                 <div>
                   <p className="text-xs text-slate-400 mb-1">方針（最大5）</p>
@@ -601,21 +631,10 @@ function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
                   </div>
                 </div>
               )}
-              {projList.length > 0 && (
-                <div>
-                  <p className="text-xs text-slate-400 mb-1">プロジェクト（最大5）</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {projList.map((p) => (
-                      <button key={p.id} type="button" onClick={() => toggle(selProjects, setSelProjects, p.id)}
-                        className={`px-2 py-0.5 rounded-full text-xs border ${selProjects.includes(p.id) ? 'bg-sky-500 text-white border-sky-500' : 'text-slate-500 border-slate-200 dark:border-slate-700'}`}>{p.name}</button>
-                    ))}
-                  </div>
-                </div>
-              )}
               {editErr && <p className="text-xs text-rose-500">{editErr}</p>}
               <div className="flex gap-2">
                 <button onClick={saveEdit} disabled={busy} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-500 text-white disabled:opacity-60">保存（再承認へ）</button>
-                <button onClick={() => { setEditing(false); setEditErr(''); setDraft({ what: task.what, why: task.why ?? '', who: task.who ?? '', whereLoc: task.whereLoc ?? '', whenDue: task.whenDue ?? '', how: task.how ?? '', departmentId: task.departmentId ?? '', startDate: task.startDate ?? '' }); }} className="px-3 py-1.5 rounded-lg text-xs text-slate-500">取消</button>
+                <button onClick={() => { setEditing(false); setEditErr(''); setDraft({ what: task.what, why: combineDetail(task), who: task.who ?? '', whereLoc: '', whenDue: task.whenDue ?? '', how: '', departmentId: task.departmentId ?? '', category: task.category ?? '', startDate: task.startDate ?? '' }); }} className="px-3 py-1.5 rounded-lg text-xs text-slate-500">取消</button>
               </div>
             </div>
           )}
@@ -637,6 +656,7 @@ export default function TodosPage() {
   const [editTodo, setEditTodo] = useState<Todo | null>(null);
   const [sortBy, setSortBy] = useState<'createdAt' | 'dueDate' | 'priority'>('dueDate');
   const [quickFilter, setQuickFilter] = useState<'none' | 'overdue' | 'dueSoon' | 'inProgress'>('none');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all'); // 集計分類での絞り込み（'all'=全て / ''=未設定 / code）
   const [period, setPeriod] = useState<Period | null>(null); // 完了の期間絞り込み（ダッシュボードの完了カードから）
   const [view, setView] = useState<View>('mine');
   const [viewInit, setViewInit] = useState(false);
@@ -679,11 +699,15 @@ export default function TodosPage() {
   }, [currentUser, viewInit]);
 
   // 決定事項由来のタスク（承認済みのうち、再承認待ちでなく、表示対象のもの）
+  // アーカイブ済み決定（削除済みだが完了実績を保持）は、完了表示(status=done)や期間絞り込みのときだけ含める。
+  const includeArchived = filterStatus === 'done' || period !== null;
   const decisionTasks = useMemo<ActiveDecisionTask[]>(() =>
     state.decisions
-      .filter((d) => d.everApproved)
+      .filter((d) => d.everApproved && (includeArchived || !d.archived))
       .flatMap((d) => d.tasks
         .filter((t) => {
+          // 中止（archived）タスクは実行タスク一覧から除外（中止一覧／決定事項カードで閲覧・中止解除）
+          if (t.archived) return false;
           // 再承認待ち(pendingEdit)は通常非表示。ただし「自分が編集した」タスクは本人に表示し取消できるようにする
           if (t.pendingEdit) return t.editedBy === currentUser?.username;
           // 全社通達（部門=全員）は共有タスク側に集約。本人担当のものは「自分」にも表示する
@@ -692,13 +716,15 @@ export default function TodosPage() {
           }
           return taskVisible(d, t, view, currentUser);
         })
-        .map((t) => ({ ...t, decisionTitle: d.title, boardOnly: d.boardOnly, decisionCreatedBy: d.createdBy, decisionDepartmentId: d.departmentId }))),
-    [state.decisions, view, filterView, currentUser]);
+        .map((t) => ({ ...t, decisionTitle: d.title, boardOnly: d.boardOnly, decisionCreatedBy: d.createdBy, decisionDepartmentId: d.departmentId, decisionArchived: d.archived }))),
+    [state.decisions, view, filterView, currentUser, includeArchived]);
 
   const filteredDecisionTasks = useMemo(() => {
     let tasks = [...decisionTasks];
     if (filterStatus === 'incomplete') tasks = tasks.filter((t) => t.status !== 'done');
     else if (filterStatus !== 'all') tasks = tasks.filter((t) => t.status === filterStatus);
+    // 集計分類での絞り込み（'all'=全て / ''=未設定のみ / それ以外=該当コード）
+    if (categoryFilter !== 'all') tasks = tasks.filter((t) => (t.category ?? '') === categoryFilter);
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       tasks = tasks.filter((t) => t.what.toLowerCase().includes(q) || t.decisionTitle.toLowerCase().includes(q));
@@ -709,7 +735,7 @@ export default function TodosPage() {
       return (b.createdAt ?? '').localeCompare(a.createdAt ?? ''); // 作成日順（新しい順）
     });
     return tasks;
-  }, [decisionTasks, filterStatus, searchQuery, sortBy]);
+  }, [decisionTasks, filterStatus, searchQuery, sortBy, categoryFilter]);
 
   const filteredTodos = useMemo(() => {
     let todos = [...state.todos];
@@ -907,6 +933,21 @@ export default function TodosPage() {
           <option value="dueDate">完了予定日</option>
           <option value="createdAt">作成日（新しい順）</option>
         </select>
+        {/* 集計分類で絞り込み（実行タスク対象）。'all'=全て / ''=未設定 */}
+        {filterType !== 'todo' && (
+          <select
+            value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}
+            className="px-3 py-2 rounded-xl border text-xs bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            style={{ borderColor: 'var(--border-color)' }}
+            title="集計分類で絞り込み"
+          >
+            <option value="all">分類: すべて</option>
+            <option value="">分類: 未設定</option>
+            {[...state.categories].sort((a, b) => a.sortOrder - b.sortOrder).map((c) => (
+              <option key={c.code} value={c.code}>分類: {c.label}{c.active ? '' : '（非表示）'}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* 期限超過で来た時、共有タブにも期限超過があれば案内 */}

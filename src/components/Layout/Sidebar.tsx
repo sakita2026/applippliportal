@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 
@@ -46,6 +45,24 @@ const navItems = [
     ),
   },
   {
+    href: '/notices',
+    label: '全員通達一覧',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
+      </svg>
+    ),
+  },
+  {
+    href: '/cancelled',
+    label: '中止一覧',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+      </svg>
+    ),
+  },
+  {
     href: '/projects',
     label: '方針・プロジェクト',
     icon: (
@@ -68,9 +85,9 @@ const navItems = [
 
 export function Sidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
-  const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [cookieName, setCookieName] = useState('');
   const currentUser = useCurrentUser();
 
   const handleLogout = () => {
@@ -82,9 +99,14 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
     // 組織管理メニューの表示判定。ログイン時に orgportal の isSuperAdmin を載せた表示用Cookie。
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsSuperAdmin(document.cookie.split('; ').some((c) => c === 'workportal_admin=1'));
+    // ログイン名の表示用フォールバック（store のメンバー読込前でも名前を出すため、表示用Cookieから取得）
+    const u = document.cookie.split('; ').find((c) => c.startsWith('workportal_user='))?.split('=')[1];
+    if (u) setCookieName(decodeURIComponent(u));
   }, []);
+
+  // 表示名：DBメンバー名を優先、無ければ表示用Cookieのユーザー名
+  const displayName = currentUser?.name || cookieName;
 
   return (
     <aside className="app-sidebar flex flex-col h-full w-52 border-r" style={{ background: 'var(--sidebar-bg)', borderColor: 'var(--border-color)' }}>
@@ -115,7 +137,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
         {navItems.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
           // 未実装の項目はクリック不可・薄表示で区別する
@@ -125,7 +147,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                 key={item.href}
                 aria-disabled="true"
                 title="準備中（未実装）"
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap text-slate-300 dark:text-slate-600 opacity-60 cursor-not-allowed select-none"
+                className="flex items-center gap-3 px-3 py-1.5 rounded-xl text-sm font-medium whitespace-nowrap text-slate-300 dark:text-slate-600 opacity-60 cursor-not-allowed select-none"
               >
                 {item.icon}
                 <span className="flex-1">{item.label}</span>
@@ -138,7 +160,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
               key={item.href}
               href={item.href}
               onClick={onClose}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-200 ${
+              className={`flex items-center gap-3 px-3 py-1.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-200 ${
                 isActive
                   ? 'bg-gradient-to-r from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/25'
                   : 'text-slate-600 dark:text-slate-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600 dark:hover:text-indigo-400'
@@ -149,6 +171,27 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
             </Link>
           );
         })}
+        {/* 設定（システム管理者のみ）— 集計分類などのマスタ管理 */}
+        {mounted && isSuperAdmin && (() => {
+          const isActive = pathname === '/settings' || pathname.startsWith('/settings/');
+          return (
+            <Link
+              href="/settings"
+              onClick={onClose}
+              className={`flex items-center gap-3 px-3 py-1.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-200 ${
+                isActive
+                  ? 'bg-gradient-to-r from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/25'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600 dark:hover:text-indigo-400'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              設定
+            </Link>
+          );
+        })()}
       </nav>
 
       {/* Bottom: theme toggle + user */}
@@ -160,7 +203,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
             href={`${ORGPORTAL_URL}/admin`}
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all duration-200"
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all duration-200"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V7M3 7l9-4 9 4M3 7h18M9 21V11h6v10" />
@@ -172,32 +215,13 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
           </a>
         )}
 
-        {/* Dark mode toggle */}
-        {mounted && (
-          <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all duration-200"
-          >
-            {theme === 'dark' ? (
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
-            ) : (
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-              </svg>
-            )}
-            {theme === 'dark' ? 'ライトモード' : 'ダークモード'}
-          </button>
-        )}
-
         {/* User avatar + logout */}
-        <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all duration-200">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all duration-200">
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white text-sm font-bold shadow-sm flex-shrink-0">
-            {currentUser?.initials ?? '?'}
+            {currentUser?.initials ?? (displayName ? displayName.charAt(0) : '?')}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-slate-700 dark:text-slate-300 truncate">{currentUser?.name ?? ''} さん</p>
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-300 truncate">{mounted && displayName ? `${displayName} さん` : ' '}</p>
             <p className="text-xs text-slate-500 dark:text-slate-500 truncate">ログイン済み</p>
           </div>
           <button

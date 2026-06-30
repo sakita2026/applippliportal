@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import Link from 'next/link';
 import { useStore, DECISION_STATUS_LABELS, STATUS_LABELS, resolveMemberName } from '@/lib/store';
 import type { Decision, DecisionStatus, DecisionTask, TodoStatus } from '@/types';
 import { format } from 'date-fns';
@@ -8,8 +9,12 @@ import { ja } from 'date-fns/locale';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { getDepartmentName } from '@/lib/departments';
 import { EditDiff } from '@/components/EditDiff';
+import { TaskCancelControls } from '@/components/TaskCancelControls';
 import { isOverdueDue, jstPeriodStartMs, type Period } from '@/lib/date';
 import { canManageDecisionTask, canManageDecision } from '@/lib/visibility';
+import { approvalRemaining } from '@/lib/approval';
+import { combineDetail } from '@/lib/taskDetail';
+import { categoryLabel, activeCategories } from '@/lib/category';
 import { ScopeControl } from '@/components/ScopeControl';
 import { decisionVisible, defaultView, type View } from '@/lib/visibility';
 
@@ -28,11 +33,12 @@ type DraftTask = {
   whenDue: string;
   how: string;
   departmentId: string;
+  category: string;
   startDate: string;
 };
 
 const emptyTask = (): DraftTask => ({
-  what: '', why: '', who: '', whereLoc: '', whenDue: '', how: '', departmentId: '', startDate: '',
+  what: '', why: '', who: '', whereLoc: '', whenDue: '', how: '', departmentId: '', category: '', startDate: '',
 });
 
 // ── 決定事項 作成フォーム ──────────────────────────────────────────────────────
@@ -44,7 +50,7 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
   // 編集時は最初は空（「新しいタスクを追加」を押すまで入力欄を出さない）。新規作成時は1行表示。
   const [tasks, setTasks] = useState<DraftTask[]>(initial ? [] : [emptyTask()]);
   const [saving, setSaving] = useState(false);
-  const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
+  const [projects, setProjects] = useState<{ id: string; name: string; policyId?: string | null }[]>([]);
   const [policyList, setPolicyList] = useState<{ id: string; name: string }[]>([]);
   const [selectedProjects, setSelectedProjects] = useState<string[]>(initial?.projects?.map((p) => p.projectId) ?? []);
   const [selectedPolicies, setSelectedPolicies] = useState<string[]>(initial?.policies?.map((p) => p.policyId) ?? []);
@@ -56,7 +62,7 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
   const [editReason, setEditReason] = useState('');
   const [editingExistingId, setEditingExistingId] = useState<string | null>(null);
   const me = useCurrentUser();
-  const isBoard = !!me && (!!me.isDirector || !!me.isRepresentative || !!me.isAdvisor);
+  const isBoard = !!me && (!!me.isDirector || !!me.isRepresentative || !!me.isAdvisor || !!me.isAuditor);
 
   const departments = state.departments;
 
@@ -66,9 +72,18 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
   }, []);
 
   const toggleProject = (id: string) => {
+    const polId = projects.find((p) => p.id === id)?.policyId;
     setSelectedProjects((prev) => {
-      if (prev.includes(id)) return prev.filter((p) => p !== id);
+      if (prev.includes(id)) {
+        const next = prev.filter((p) => p !== id);
+        // 解除時：他に同じ方針を持つ選択中PJが無ければ、紐づく方針も外す
+        if (polId && !next.some((pid) => projects.find((p) => p.id === pid)?.policyId === polId)) {
+          setSelectedPolicies((pol) => pol.filter((x) => x !== polId));
+        }
+        return next;
+      }
       if (prev.length >= 5) return prev; // 最大5
+      if (polId) setSelectedPolicies((pol) => (pol.includes(polId) || pol.length >= 5 ? pol : [...pol, polId]));
       return [...prev, id];
     });
   };
@@ -93,7 +108,7 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
         const newTasks = tasks.filter((t) => t.what.trim()).map((t) => ({
           what: t.what.trim(), why: t.why.trim() || undefined, who: t.who || undefined,
           whereLoc: t.whereLoc.trim() || undefined, whenDue: t.whenDue || undefined,
-          how: t.how.trim() || undefined, departmentId: t.departmentId || undefined, startDate: t.startDate || undefined,
+          how: t.how.trim() || undefined, departmentId: t.departmentId || undefined, category: t.category || undefined, startDate: t.startDate || undefined,
         }));
         await updateDecision(initial.id, {
           title: title.trim(),
@@ -122,6 +137,7 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
               whenDue: t.whenDue || undefined,
               how: t.how.trim() || undefined,
               departmentId: t.departmentId || undefined,
+              category: t.category || undefined,
               startDate: t.startDate || undefined,
             })),
           projectIds: selectedProjects,
@@ -215,29 +231,7 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
             </label>
           </div>
 
-          {/* 方針（タグ・最大5） */}
-          {policyList.length > 0 && (
-            <div>
-              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">
-                方針（タグ・最大5）{selectedPolicies.length > 0 && ` — ${selectedPolicies.length}/5`}
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {policyList.map((p) => {
-                  const sel = selectedPolicies.includes(p.id);
-                  return (
-                    <button key={p.id} type="button" onClick={() => togglePolicy(p.id)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                        sel ? 'bg-amber-500 text-white border-amber-500' : 'text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-amber-300'
-                      }`}>
-                      {p.name}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* プロジェクト（タグ・最大5） */}
+          {/* プロジェクト（タグ・最大5）。先に表示。選ぶと紐づく方針が自動でチェックされる。 */}
           {projects.length > 0 && (
             <div>
               <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">
@@ -252,6 +246,28 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
                         sel
                           ? 'bg-sky-500 text-white border-sky-500'
                           : 'text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-sky-300'
+                      }`}>
+                      {p.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 方針（タグ・最大5）。プロジェクトの下に表示。 */}
+          {policyList.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">
+                方針（タグ・最大5）{selectedPolicies.length > 0 && ` — ${selectedPolicies.length}/5`}
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {policyList.map((p) => {
+                  const sel = selectedPolicies.includes(p.id);
+                  return (
+                    <button key={p.id} type="button" onClick={() => togglePolicy(p.id)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                        sel ? 'bg-amber-500 text-white border-amber-500' : 'text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-amber-300'
                       }`}>
                       {p.name}
                     </button>
@@ -286,11 +302,10 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
                       <div className="mt-1 pl-3.5 flex flex-wrap gap-x-3 gap-y-0.5 text-slate-400">
                         {t.who && <span>担当: {resolveMemberName(state.members, t.who)}</span>}
                         {t.departmentId && <span>部門: {getDepartmentName(t.departmentId, state.departments)}</span>}
+                        {categoryLabel(t.category, state.categories) && <span className="text-violet-600">🏷 {categoryLabel(t.category, state.categories)}</span>}
                         {t.startDate && <span>開始: {t.startDate}</span>}
                         {t.whenDue && <span>完了予定: {t.whenDue}</span>}
-                        {t.whereLoc && <span>どこで: {t.whereLoc}</span>}
-                        {t.why && <span>なぜ: {t.why}</span>}
-                        {t.how && <span>どうやって: {t.how}</span>}
+                        {combineDetail(t) && <span>目的・手法詳細: {combineDetail(t)}</span>}
                         {t.policies?.map((p) => <span key={p.policyId} className="text-amber-600">方針:{p.policy.name}</span>)}
                         {t.projects?.map((p) => <span key={p.projectId} className="text-sky-600">PJ:{p.project.name}</span>)}
                       </div>
@@ -323,13 +338,15 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
                         <option value="">部門</option>
                         {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                       </select>
+                      <select value={task.category} onChange={(e) => updateTask(i, { category: e.target.value })} className={fieldCls} style={{ borderColor: 'var(--border-color)' }}>
+                        <option value="">集計分類（空白）</option>
+                        {activeCategories(state.categories).map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
+                      </select>
                       <label className="text-xs text-slate-400 flex flex-col gap-0.5">開始日
                         <input type="date" value={task.startDate} onChange={(e) => updateTask(i, { startDate: e.target.value })} className={fieldCls} style={{ borderColor: 'var(--border-color)' }} /></label>
                       <label className="text-xs text-slate-400 flex flex-col gap-0.5">完了予定日
                         <input type="date" value={task.whenDue} onChange={(e) => updateTask(i, { whenDue: e.target.value })} className={fieldCls} style={{ borderColor: 'var(--border-color)' }} /></label>
-                      <input value={task.whereLoc} onChange={(e) => updateTask(i, { whereLoc: e.target.value })} placeholder="どこで" className={fieldCls} style={{ borderColor: 'var(--border-color)' }} />
-                      <input value={task.why} onChange={(e) => updateTask(i, { why: e.target.value })} placeholder="なぜ" className={fieldCls} style={{ borderColor: 'var(--border-color)' }} />
-                      <input value={task.how} onChange={(e) => updateTask(i, { how: e.target.value })} placeholder="どうやって" className={fieldCls} style={{ borderColor: 'var(--border-color)' }} />
+                      <textarea rows={5} value={task.why} onChange={(e) => updateTask(i, { why: e.target.value })} placeholder="目的・手法詳細など" className={`${fieldCls} sm:col-span-2 resize-none overflow-y-auto`} style={{ borderColor: 'var(--border-color)' }} />
                     </div>
                   </div>
                 ))}
@@ -366,11 +383,11 @@ function InlineTaskEditor({ task, onClose }: { task: DecisionTask & { decisionId
   const { editDecisionTask, state } = useStore();
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState({
-    what: task.what, why: task.why ?? '', who: task.who ?? '', whereLoc: task.whereLoc ?? '',
-    whenDue: task.whenDue ?? '', how: task.how ?? '', departmentId: task.departmentId ?? '', startDate: task.startDate ?? '',
+    what: task.what, why: combineDetail(task), who: task.who ?? '', whereLoc: '',
+    whenDue: task.whenDue ?? '', how: '', departmentId: task.departmentId ?? '', category: task.category ?? '', startDate: task.startDate ?? '',
   });
   const [polList, setPolList] = useState<Array<{ id: string; name: string }>>([]);
-  const [projList, setProjList] = useState<Array<{ id: string; name: string }>>([]);
+  const [projList, setProjList] = useState<Array<{ id: string; name: string; policyId?: string | null }>>([]);
   const [selProjects, setSelProjects] = useState<string[]>(task.projects?.map((p) => p.projectId) ?? []);
   const [selPolicies, setSelPolicies] = useState<string[]>(task.policies?.map((p) => p.policyId) ?? []);
   const efld = 'w-full px-2 py-1.5 rounded-lg border text-xs bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-400';
@@ -384,15 +401,31 @@ function InlineTaskEditor({ task, onClose }: { task: DecisionTask & { decisionId
     if (arr.includes(id)) set(arr.filter((x) => x !== id));
     else if (arr.length < 5) set([...arr, id]);
   };
+  // プロジェクト選択：選択時は紐づく方針を自動チェック／解除時は（他に同じ方針を持つ選択中PJが無ければ）方針も外す
+  const selectProj = (id: string) => {
+    const polId = projList.find((p) => p.id === id)?.policyId;
+    if (selProjects.includes(id)) {
+      const next = selProjects.filter((x) => x !== id);
+      setSelProjects(next);
+      if (polId && !next.some((pid) => projList.find((p) => p.id === pid)?.policyId === polId)) {
+        setSelPolicies(selPolicies.filter((x) => x !== polId));
+      }
+      return;
+    }
+    if (selProjects.length >= 5) return;
+    setSelProjects([...selProjects, id]);
+    if (polId && !selPolicies.includes(polId) && selPolicies.length < 5) setSelPolicies([...selPolicies, polId]);
+  };
 
   const save = async () => {
     if (busy || !draft.what.trim()) return;
     setBusy(true);
     await editDecisionTask(task.decisionId, {
       ...task,
-      what: draft.what.trim(), why: draft.why.trim() || undefined, who: draft.who || undefined,
-      whereLoc: draft.whereLoc.trim() || undefined, whenDue: draft.whenDue || undefined,
-      how: draft.how.trim() || undefined, departmentId: draft.departmentId || undefined,
+      what: draft.what.trim(), why: draft.why.trim(), who: draft.who || undefined,
+      whereLoc: '', whenDue: draft.whenDue || undefined,
+      how: '', departmentId: draft.departmentId || undefined,
+      category: draft.category || null,
       startDate: draft.startDate || undefined,
       projectIds: selProjects, policyIds: selPolicies,
     } as DecisionTask & { projectIds: string[]; policyIds: string[] }).catch(() => null);
@@ -412,14 +445,27 @@ function InlineTaskEditor({ task, onClose }: { task: DecisionTask & { decisionId
           <option value="">部門</option>
           {state.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
+        <select className={efld} style={{ borderColor: 'var(--border-color)' }} value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })}>
+          <option value="">集計分類（空白）</option>
+          {activeCategories(state.categories).map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
+        </select>
         <label className="text-xs text-slate-400 flex flex-col gap-0.5">開始日
           <input type="date" className={efld} style={{ borderColor: 'var(--border-color)' }} value={draft.startDate} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} /></label>
         <label className="text-xs text-slate-400 flex flex-col gap-0.5">完了予定日
           <input type="date" className={efld} style={{ borderColor: 'var(--border-color)' }} value={draft.whenDue} onChange={(e) => setDraft({ ...draft, whenDue: e.target.value })} /></label>
-        <input className={efld} style={{ borderColor: 'var(--border-color)' }} placeholder="どこで" value={draft.whereLoc} onChange={(e) => setDraft({ ...draft, whereLoc: e.target.value })} />
-        <input className={efld} style={{ borderColor: 'var(--border-color)' }} placeholder="なぜ" value={draft.why} onChange={(e) => setDraft({ ...draft, why: e.target.value })} />
-        <input className={efld} style={{ borderColor: 'var(--border-color)' }} placeholder="どうやって" value={draft.how} onChange={(e) => setDraft({ ...draft, how: e.target.value })} />
+        <textarea rows={5} className={`${efld} sm:col-span-2 resize-none overflow-y-auto`} style={{ borderColor: 'var(--border-color)' }} placeholder="目的・手法詳細など" value={draft.why} onChange={(e) => setDraft({ ...draft, why: e.target.value })} />
       </div>
+      {projList.length > 0 && (
+        <div>
+          <p className="text-xs text-slate-400 mb-1">プロジェクト（最大5）</p>
+          <div className="flex flex-wrap gap-1.5">
+            {projList.map((p) => (
+              <button key={p.id} type="button" onClick={() => selectProj(p.id)}
+                className={`px-2 py-0.5 rounded-full text-xs border ${selProjects.includes(p.id) ? 'bg-sky-500 text-white border-sky-500' : 'text-slate-500 border-slate-200 dark:border-slate-700'}`}>{p.name}</button>
+            ))}
+          </div>
+        </div>
+      )}
       {polList.length > 0 && (
         <div>
           <p className="text-xs text-slate-400 mb-1">方針（最大5）</p>
@@ -427,17 +473,6 @@ function InlineTaskEditor({ task, onClose }: { task: DecisionTask & { decisionId
             {polList.map((p) => (
               <button key={p.id} type="button" onClick={() => toggle(selPolicies, setSelPolicies, p.id)}
                 className={`px-2 py-0.5 rounded-full text-xs border ${selPolicies.includes(p.id) ? 'bg-amber-500 text-white border-amber-500' : 'text-slate-500 border-slate-200 dark:border-slate-700'}`}>{p.name}</button>
-            ))}
-          </div>
-        </div>
-      )}
-      {projList.length > 0 && (
-        <div>
-          <p className="text-xs text-slate-400 mb-1">プロジェクト（最大5）</p>
-          <div className="flex flex-wrap gap-1.5">
-            {projList.map((p) => (
-              <button key={p.id} type="button" onClick={() => toggle(selProjects, setSelProjects, p.id)}
-                className={`px-2 py-0.5 rounded-full text-xs border ${selProjects.includes(p.id) ? 'bg-sky-500 text-white border-sky-500' : 'text-slate-500 border-slate-200 dark:border-slate-700'}`}>{p.name}</button>
             ))}
           </div>
         </div>
@@ -455,9 +490,9 @@ function InlineTaskEditor({ task, onClose }: { task: DecisionTask & { decisionId
 function InlineTaskCreator({ decisionId, onClose, requireApproval = false }: { decisionId: string; onClose: () => void; requireApproval?: boolean }) {
   const { addDecisionTask, state } = useStore();
   const [busy, setBusy] = useState(false);
-  const [draft, setDraft] = useState({ what: '', why: '', who: '', whereLoc: '', whenDue: '', how: '', departmentId: '', startDate: '' });
+  const [draft, setDraft] = useState({ what: '', why: '', who: '', whereLoc: '', whenDue: '', how: '', departmentId: '', category: '', startDate: '' });
   const [polList, setPolList] = useState<Array<{ id: string; name: string }>>([]);
-  const [projList, setProjList] = useState<Array<{ id: string; name: string }>>([]);
+  const [projList, setProjList] = useState<Array<{ id: string; name: string; policyId?: string | null }>>([]);
   const [selProjects, setSelProjects] = useState<string[]>([]);
   const [selPolicies, setSelPolicies] = useState<string[]>([]);
   const efld = 'w-full px-2 py-1.5 rounded-lg border text-xs bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-400';
@@ -469,13 +504,28 @@ function InlineTaskCreator({ decisionId, onClose, requireApproval = false }: { d
     if (arr.includes(id)) set(arr.filter((x) => x !== id));
     else if (arr.length < 5) set([...arr, id]);
   };
+  // プロジェクト選択：選択時は紐づく方針を自動チェック／解除時は（他に同じ方針を持つ選択中PJが無ければ）方針も外す
+  const selectProj = (id: string) => {
+    const polId = projList.find((p) => p.id === id)?.policyId;
+    if (selProjects.includes(id)) {
+      const next = selProjects.filter((x) => x !== id);
+      setSelProjects(next);
+      if (polId && !next.some((pid) => projList.find((p) => p.id === pid)?.policyId === polId)) {
+        setSelPolicies(selPolicies.filter((x) => x !== polId));
+      }
+      return;
+    }
+    if (selProjects.length >= 5) return;
+    setSelProjects([...selProjects, id]);
+    if (polId && !selPolicies.includes(polId) && selPolicies.length < 5) setSelPolicies([...selPolicies, polId]);
+  };
   const save = async () => {
     if (busy || !draft.what.trim()) return;
     setBusy(true);
     await addDecisionTask(decisionId, {
       what: draft.what.trim(), why: draft.why.trim() || undefined, who: draft.who || undefined,
       whereLoc: draft.whereLoc.trim() || undefined, whenDue: draft.whenDue || undefined,
-      how: draft.how.trim() || undefined, departmentId: draft.departmentId || undefined, startDate: draft.startDate || undefined,
+      how: draft.how.trim() || undefined, departmentId: draft.departmentId || undefined, category: draft.category || undefined, startDate: draft.startDate || undefined,
       projectIds: selProjects, policyIds: selPolicies,
     }, requireApproval).catch(() => null);
     setBusy(false);
@@ -494,14 +544,27 @@ function InlineTaskCreator({ decisionId, onClose, requireApproval = false }: { d
           <option value="">部門</option>
           {state.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
+        <select className={efld} style={{ borderColor: 'var(--border-color)' }} value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })}>
+          <option value="">集計分類（空白）</option>
+          {activeCategories(state.categories).map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
+        </select>
         <label className="text-xs text-slate-400 flex flex-col gap-0.5">開始日
           <input type="date" className={efld} style={{ borderColor: 'var(--border-color)' }} value={draft.startDate} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} /></label>
         <label className="text-xs text-slate-400 flex flex-col gap-0.5">完了予定日
           <input type="date" className={efld} style={{ borderColor: 'var(--border-color)' }} value={draft.whenDue} onChange={(e) => setDraft({ ...draft, whenDue: e.target.value })} /></label>
-        <input className={efld} style={{ borderColor: 'var(--border-color)' }} placeholder="どこで" value={draft.whereLoc} onChange={(e) => setDraft({ ...draft, whereLoc: e.target.value })} />
-        <input className={efld} style={{ borderColor: 'var(--border-color)' }} placeholder="なぜ" value={draft.why} onChange={(e) => setDraft({ ...draft, why: e.target.value })} />
-        <input className={efld} style={{ borderColor: 'var(--border-color)' }} placeholder="どうやって" value={draft.how} onChange={(e) => setDraft({ ...draft, how: e.target.value })} />
+        <textarea rows={5} className={`${efld} sm:col-span-2 resize-none overflow-y-auto`} style={{ borderColor: 'var(--border-color)' }} placeholder="目的・手法詳細など" value={draft.why} onChange={(e) => setDraft({ ...draft, why: e.target.value })} />
       </div>
+      {projList.length > 0 && (
+        <div>
+          <p className="text-xs text-slate-400 mb-1">プロジェクト（最大5）</p>
+          <div className="flex flex-wrap gap-1.5">
+            {projList.map((p) => (
+              <button key={p.id} type="button" onClick={() => selectProj(p.id)}
+                className={`px-2 py-0.5 rounded-full text-xs border ${selProjects.includes(p.id) ? 'bg-sky-500 text-white border-sky-500' : 'text-slate-500 border-slate-200 dark:border-slate-700'}`}>{p.name}</button>
+            ))}
+          </div>
+        </div>
+      )}
       {polList.length > 0 && (
         <div>
           <p className="text-xs text-slate-400 mb-1">方針（最大5）</p>
@@ -509,17 +572,6 @@ function InlineTaskCreator({ decisionId, onClose, requireApproval = false }: { d
             {polList.map((p) => (
               <button key={p.id} type="button" onClick={() => toggle(selPolicies, setSelPolicies, p.id)}
                 className={`px-2 py-0.5 rounded-full text-xs border ${selPolicies.includes(p.id) ? 'bg-amber-500 text-white border-amber-500' : 'text-slate-500 border-slate-200 dark:border-slate-700'}`}>{p.name}</button>
-            ))}
-          </div>
-        </div>
-      )}
-      {projList.length > 0 && (
-        <div>
-          <p className="text-xs text-slate-400 mb-1">プロジェクト（最大5）</p>
-          <div className="flex flex-wrap gap-1.5">
-            {projList.map((p) => (
-              <button key={p.id} type="button" onClick={() => toggle(selProjects, setSelProjects, p.id)}
-                className={`px-2 py-0.5 rounded-full text-xs border ${selProjects.includes(p.id) ? 'bg-sky-500 text-white border-sky-500' : 'text-slate-500 border-slate-200 dark:border-slate-700'}`}>{p.name}</button>
             ))}
           </div>
         </div>
@@ -538,6 +590,7 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId }: { decision
   const me = useCurrentUser();
   const cardRef = useRef<HTMLDivElement>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(autoEditTaskId ?? null);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null); // クリックで全内容を閲覧展開
   const [addingTask, setAddingTask] = useState(false);
   // 承認待ち（編集・タスク追加/編集による再承認）のとき、または指定で開かれたときは全タスク内容を自動展開
   const [open, setOpen] = useState(decision.status === 'pending' || !!autoOpen);
@@ -572,7 +625,8 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId }: { decision
   const approvedList = decision.approvals ?? [];
   const iApproved = !!me && approvedList.some((a) => a.approver === me.username);
   const requiredCount = 2; // 方針/PJ=取締役2名、決定=担当部長＋取締役1名 いずれも2名
-  const remaining = Math.max(0, requiredCount - approvedList.length);
+  // 残数は件数ではなく役職構成で判定（例：取締役2名でも担当部長がいなければ「あと1名(担当部長)」）
+  const { remaining, need: remainingNeed } = approvalRemaining('decision', approvedList, { departmentId: decision.departmentId, boardOnly: decision.boardOnly });
   const canApproveThis = eligible && decision.status === 'pending' && !iApproved;
   const deptName = decision.departmentId === 'all' ? '全員（通達）' : decision.departmentId ? getDepartmentName(decision.departmentId, state.departments) : null;
   const requiredText = noManager ? '取締役2名' : '担当部長＋取締役1名';
@@ -581,6 +635,8 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId }: { decision
   const assigneeDept = decision.assigneeUsername ? state.members.find((m) => m.username === decision.assigneeUsername)?.departmentId ?? null : null;
   const canManageDec = canManageDecision(decision, me, assigneeDept);
   const canEdit = canManageDec && !decision.deleteRequested;
+  // 監査役は中止・中止解除・削除のいずれも不可（編集は可）
+  const canCancelDec = canManageDec && !me?.isAuditor;
   // 編集の取り消し：承認待ちの間のみ・編集前スナップショットあり・「編集した本人」のみ
   const canUndoEdit = !!me && decision.status === 'pending' && !!decision.hasPrevState && decision.editedBy === me.username && !decision.deleteRequested;
   // 承認の取り消し：自分の承認・承認待ち（2名未達）・承認から30分以内
@@ -588,9 +644,12 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId }: { decision
   const within30 = !!myApproval?.createdAt && (Date.now() - new Date(myApproval.createdAt).getTime() < 30 * 60 * 1000);
   const canUndoApprove = !!myApproval && decision.status === 'pending' && within30 && !decision.deleteRequested;
 
-  const total = decision.tasks.length;
-  const doneCount = decision.tasks.filter((t) => t.status === 'done').length;
+  // 中止（archived）タスクは進捗・件数の集計から除外する
+  const activeTasks = decision.tasks.filter((t) => !t.archived);
+  const total = activeTasks.length;
+  const doneCount = activeTasks.filter((t) => t.status === 'done').length;
   const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
+  const hasAnyTask = decision.tasks.length > 0; // 中止のみでも一覧は表示（中止解除のため）
 
   const handleApprove = async () => {
     if (busy) return;
@@ -600,7 +659,7 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId }: { decision
   };
 
   const handleRequestDelete = async () => {
-    if (busy || !confirm('この決定事項の削除を申請しますか？（削除には ' + (noManager ? '取締役2名' : '担当部長＋取締役1名') + ' の承認が必要です）')) return;
+    if (busy || !confirm('この決定事項を中止申請しますか？（中止には ' + (noManager ? '取締役2名' : '担当部長＋取締役1名') + ' の承認が必要です。完了済みの実行タスクは完了のまま保持されます）')) return;
     setBusy(true);
     await requestDeleteDecision(decision).catch(() => null);
     setBusy(false);
@@ -640,7 +699,7 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId }: { decision
               <span title="取締役＋担当部長のみに表示" className="text-xs font-medium px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-600 border border-rose-200 dark:border-rose-800">🔒 取締役会限定（取締役＋担当部長のみ表示）</span>
             )}
             {decision.departmentId === 'all' && (
-              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 border border-emerald-200 dark:border-emerald-800">📢 全員通達</span>
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-600 border border-rose-200 dark:border-rose-800">📢 全員通達</span>
             )}
           </div>
           {decision.description && (
@@ -669,7 +728,7 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId }: { decision
           {decision.status === 'pending' && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
               <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium">
-                承認 {approvedList.length}/{requiredCount}
+                承認 {requiredCount - remaining}/{requiredCount}
               </span>
               {approvedList.map((a) => (
                 <span key={a.approver} className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
@@ -677,13 +736,13 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId }: { decision
                 </span>
               ))}
               {remaining > 0 && (
-                <span className="text-amber-600 dark:text-amber-400">あと{remaining}名の承認が必要</span>
+                <span className="text-amber-600 dark:text-amber-400">あと{remaining}名の承認が必要{remainingNeed ? `（${remainingNeed}）` : ''}</span>
               )}
             </div>
           )}
           {decision.status === 'pending' && iApproved && (
             <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-              ✓ あなたは承認済みです{remaining > 0 ? `（残り${remaining}名の承認待ち）` : ''}
+              ✓ あなたは承認済みです{remaining > 0 ? `（残り${remaining}名の承認待ち${remainingNeed ? `：${remainingNeed}` : ''}）` : ''}
             </p>
           )}
           {decision.status === 'pending' && decision.editNote && (
@@ -722,25 +781,23 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId }: { decision
               </svg>
             </button>
           )}
-          {decision.deleteRequested ? (
+          {decision.archived ? (
+            <Link href="/cancelled" className="text-xs px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-600 border border-rose-200 dark:border-rose-800">🚫 中止済み（中止一覧へ）</Link>
+          ) : decision.deleteRequested ? (
             <>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-600">削除承認待ち</span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-600">中止承認待ち</span>
               {eligible && (
                 <button onClick={handleRequestDelete} disabled={busy}
-                  className="px-2 py-1 rounded-lg text-xs font-medium bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-60">削除を承認</button>
+                  className="px-2 py-1 rounded-lg text-xs font-medium bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-60">中止を承認</button>
               )}
-              {canManageDec && (
+              {canCancelDec && (
                 <button onClick={handleCancelDelete} disabled={busy}
                   className="px-2 py-1 rounded-lg text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">取消</button>
               )}
             </>
-          ) : canManageDec && (
+          ) : canCancelDec && (
             <button onClick={handleRequestDelete} disabled={busy}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors" title="削除を申請">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-            </button>
+              className="px-2 py-1 rounded-lg text-xs font-medium text-rose-500 border border-rose-200 dark:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors" title="中止を申請">中止</button>
           )}
         </div>
       </div>
@@ -783,35 +840,43 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId }: { decision
       )}
 
       {/* タスク詳細（5W1H） */}
-      {open && total > 0 && (
+      {open && hasAnyTask && (
         <div className="mt-3 space-y-2 border-t pt-3" style={{ borderColor: 'var(--border-color)' }}>
           {decision.tasks.map((t) => (
-            <div key={t.id} className="text-sm">
-              <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${t.status === 'done' ? 'bg-emerald-400' : t.status === 'in_progress' ? 'bg-amber-400' : 'bg-slate-300'}`} />
-                <span className={`font-medium ${t.status === 'done' ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}>{t.what}</span>
-                <span className="text-xs text-slate-400">{STATUS_LABELS[t.status as TodoStatus]}</span>
-                {t.pendingEdit && <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">再承認待ち</span>}
-                {canManageDecisionTask(t, me, decision.departmentId) && (
+            <div key={t.id} className={`text-sm ${t.archived ? 'opacity-60' : ''}`}>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button onClick={() => setExpandedTaskId(expandedTaskId === t.id ? null : t.id)} className="flex items-center gap-2 flex-1 min-w-0 text-left" title="クリックで内容を表示">
+                  <svg className={`w-3 h-3 flex-shrink-0 text-slate-400 transition-transform ${expandedTaskId === t.id ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${t.archived ? 'bg-rose-300' : t.status === 'done' ? 'bg-emerald-400' : t.status === 'in_progress' ? 'bg-amber-400' : 'bg-slate-300'}`} />
+                  <span className={`font-medium truncate ${t.archived ? 'line-through text-slate-400' : t.status === 'done' ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}>{t.what}</span>
+                  {!t.archived && <span className="text-xs text-slate-400 flex-shrink-0">{STATUS_LABELS[t.status as TodoStatus]}</span>}
+                  {categoryLabel(t.category, state.categories) && <span className="text-xs px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 flex-shrink-0">🏷 {categoryLabel(t.category, state.categories)}</span>}
+                  {t.pendingEdit && <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 flex-shrink-0">再承認待ち</span>}
+                </button>
+                {/* 中止／中止解除（決定事項の中止と同じ2名承認ルール） */}
+                <TaskCancelControls task={t} decisionDepartmentId={decision.departmentId} boardOnly={decision.boardOnly} />
+                {!t.archived && !t.deleteRequested && canManageDecisionTask(t, me, decision.departmentId) && (
                   <button onClick={() => setEditingTaskId(editingTaskId === t.id ? null : t.id)}
-                    className="ml-auto text-xs px-2 py-0.5 rounded-lg text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors flex-shrink-0">
+                    className="text-xs px-2 py-0.5 rounded-lg text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors flex-shrink-0">
                     {editingTaskId === t.id ? '閉じる' : '編集'}
                   </button>
                 )}
               </div>
               {editingTaskId === t.id ? (
                 <InlineTaskEditor task={{ ...t, decisionId: decision.id }} onClose={() => setEditingTaskId(null)} />
-              ) : (
-                <div className="pl-4 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-400">
-                  {decision.createdBy && <span>決定事項作成者: {resolveMemberName(state.members, decision.createdBy)}</span>}
-                  {t.createdBy && <span>実行タスク作成者: {resolveMemberName(state.members, t.createdBy)}</span>}
-                  {t.who && <span>担当: {resolveMemberName(state.members, t.who)}</span>}
-                  {t.departmentId && <span>部門: {getDepartmentName(t.departmentId, state.departments)}</span>}
-                  {t.startDate && <span>開始: {t.startDate}</span>}
-                  {t.whenDue && <span>完了予定: {t.whenDue}</span>}
-                  {t.whereLoc && <span>場所: {t.whereLoc}</span>}
-                  {t.why && <span>理由: {t.why}</span>}
-                  {t.how && <span>方法: {t.how}</span>}
+              ) : expandedTaskId === t.id && (
+                <div className="pl-4 mt-1 grid grid-cols-[5.5rem_1fr] gap-x-2 gap-y-0.5 text-xs">
+                  <span className="text-slate-400">内容</span><span className="text-slate-700 dark:text-slate-200 break-words">{t.what}</span>
+                  {decision.createdBy && (<><span className="text-slate-400">決定事項作成者</span><span className="text-slate-700 dark:text-slate-200">{resolveMemberName(state.members, decision.createdBy)}</span></>)}
+                  {t.createdBy && (<><span className="text-slate-400">実行タスク作成者</span><span className="text-slate-700 dark:text-slate-200">{resolveMemberName(state.members, t.createdBy)}</span></>)}
+                  {t.who && (<><span className="text-slate-400">担当（誰が）</span><span className="text-slate-700 dark:text-slate-200">{resolveMemberName(state.members, t.who)}</span></>)}
+                  {t.departmentId && (<><span className="text-slate-400">部門</span><span className="text-slate-700 dark:text-slate-200">{getDepartmentName(t.departmentId, state.departments)}</span></>)}
+                  {categoryLabel(t.category, state.categories) && (<><span className="text-slate-400">集計分類</span><span className="text-violet-600 dark:text-violet-300">{categoryLabel(t.category, state.categories)}</span></>)}
+                  {t.startDate && (<><span className="text-slate-400">開始日</span><span className="text-slate-700 dark:text-slate-200">{t.startDate}</span></>)}
+                  {t.whenDue && (<><span className="text-slate-400">完了予定日</span><span className="text-slate-700 dark:text-slate-200">{t.whenDue}</span></>)}
+                  {combineDetail(t) && (<><span className="text-slate-400">目的・手法詳細</span><span className="text-slate-700 dark:text-slate-200 break-words whitespace-pre-wrap">{combineDetail(t)}</span></>)}
+                  {(t.policies?.length ?? 0) > 0 && (<><span className="text-slate-400">方針</span><span className="text-amber-600 dark:text-amber-300">{t.policies!.map((p) => p.policy.name).join('、')}</span></>)}
+                  {(t.projects?.length ?? 0) > 0 && (<><span className="text-slate-400">プロジェクト</span><span className="text-sky-600 dark:text-sky-300">{t.projects!.map((p) => p.project.name).join('、')}</span></>)}
                 </div>
               )}
             </div>
@@ -883,6 +948,9 @@ export default function DecisionsPage() {
 
   const filtered = useMemo(() => {
     let list = scoped;
+    // アーカイブ済み（削除されたが完了実績として保持）は、完了(done)表示・期間絞り込み時のみ表示。他は非表示。
+    const showArchived = filter === 'done' || !!period;
+    if (!showArchived) list = list.filter((d) => !d.archived);
     if (boardFilter) list = list.filter((d) => d.boardOnly);
     if (overdueFilter) list = list.filter((d) => d.status !== 'done' && isOverdueDue(d.dueDate));
     if (filter === 'incomplete') list = list.filter((d) => d.status !== 'done');
