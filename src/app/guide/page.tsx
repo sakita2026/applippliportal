@@ -53,7 +53,8 @@ export default function GuidePage() {
         <ul className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm text-slate-700 dark:text-slate-300">
           <li><b>取締役</b>＝取締役・代表取締役。<span className="text-slate-500">承認と全体閲覧の基準になる役職。</span></li>
           <li><b>顧問</b>＝取締役会メンバーだが<b>承認はできない</b>（権限は社員相当）。</li>
-          <li><b>取締役会メンバー</b>＝取締役・代表取締役・顧問。</li>
+          <li><b>監査役</b>＝<b>取締役会メンバー</b>。<b>閲覧は取締役と同等（全体が見える）</b>。ただし<b>承認・中止・削除は一切できません</b>。方針・プロジェクトは<b>部長と同じ権限</b>（決定事項・実行タスクは取締役同様に作成・編集できます）。</li>
+          <li><b>取締役会メンバー</b>＝取締役・代表取締役・顧問・監査役。</li>
           <li><b>担当部長</b>＝その部門の部長（部門が一致する部長）。</li>
           <li><b>課長・社員</b>＝一般メンバー。</li>
           <li><b>管理者</b>＝システム管理担当（組織管理）。</li>
@@ -83,24 +84,24 @@ export default function GuidePage() {
               </tr>
               <tr>
                 <td className={td}><b>プロジェクト</b></td>
-                <td className={td}>担当部長＋取締役<br /><span className="text-xs text-slate-500">部長は自部門のみ</span></td>
-                <td className={td}>担当部長＋取締役<br /><span className="text-xs text-amber-600 dark:text-amber-400">編集すると再承認</span></td>
-                <td className={td}>取締役 <b>2名</b><br /><span className="text-xs text-rose-500">部長は承認不可</span></td>
-                <td className={td}>申請=担当部長＋取締役／実削除=取締役2名</td>
+                <td className={td}>担当部長＋取締役＋<b>監査役</b><br /><span className="text-xs text-slate-500">部長・監査役は自部門のみ</span></td>
+                <td className={td}>担当部長＋取締役＋<b>監査役</b><br /><span className="text-xs text-slate-500">部長・監査役は自部門のみ</span><br /><span className="text-xs text-amber-600 dark:text-amber-400">編集すると再承認</span></td>
+                <td className={td}>取締役 <b>2名</b><br /><span className="text-xs text-rose-500">部長・監査役は承認不可</span></td>
+                <td className={td}>申請=担当部長＋取締役／実削除=取締役2名<br /><span className="text-xs text-rose-500">監査役は削除不可</span></td>
               </tr>
               <tr>
                 <td className={td}><b>決定事項</b></td>
                 <td className={td}>誰でも（ログイン者）</td>
                 <td className={td}>起案者・担当者・担当部長・取締役<br /><span className="text-xs text-amber-600 dark:text-amber-400">編集すると再承認</span></td>
                 <td className={td}>担当部長 <b>1名</b>＋取締役 <b>1名</b><br /><span className="text-xs text-slate-500">📢全社通達・🔒取締役会限定は取締役2名</span></td>
-                <td className={td}>起案者・担当者・担当部長・取締役<br /><span className="text-xs text-slate-500">（承認要件を満たして削除）</span></td>
+                <td className={td}><b>「中止」</b>（削除はしません）<br /><span className="text-xs text-slate-500">申請→2名承認。元に戻すのも2名承認</span></td>
               </tr>
               <tr>
-                <td className={td}><b>実行タスク</b></td>
+                <td className={td}><b>実行タスク</b><br /><span className="text-xs text-slate-500">＝決定事項に紐づくタスク</span></td>
                 <td className={td}>決定事項にひも付けて作成<br /><span className="text-xs text-slate-500">後から足すのは部長以上</span></td>
                 <td className={td}>起案者・担当者・担当部長・取締役</td>
                 <td className={td}><span className="text-slate-500">—（決定事項側で承認）</span></td>
-                <td className={td}>担当者・担当部長・取締役<br /><span className="text-xs text-rose-500">起案者は編集できるが削除は不可</span></td>
+                <td className={td}><b>「中止」</b>（削除はしません）<br /><span className="text-xs text-slate-500">申請→2名承認。元に戻すのも2名承認</span></td>
               </tr>
               <tr>
                 <td className={td}><b>個人タスク</b></td>
@@ -112,6 +113,7 @@ export default function GuidePage() {
             </tbody>
           </table>
           <p className="text-xs text-slate-500 mt-3">※ 権限の無い操作は、ボタン自体が表示されません（押せる操作＝あなたに権限がある操作です）。</p>
+          <p className="text-xs text-slate-500 mt-1">※ <b>監査役</b>＝全体を閲覧でき、決定事項・実行タスクは取締役同様に作成・編集可。プロジェクトは部長同様に自部門のみ作成・編集可。<b>承認・中止・削除はすべて不可</b>（方針の作成も不可）。</p>
         </Card>
       </Section>
 
@@ -147,8 +149,8 @@ export default function GuidePage() {
         <div className="grid sm:grid-cols-3 gap-3">
           <Card>
             <p className="font-bold text-indigo-600 dark:text-indigo-400">取締役会メンバー</p>
-            <p className="text-xs text-slate-500 mb-1">取締役・代表・顧問</p>
-            <p><b>全体</b>が見えます。</p>
+            <p className="text-xs text-slate-500 mb-1">取締役・代表・顧問・監査役</p>
+            <p><b>全体</b>が見えます。<span className="text-xs text-slate-500">（監査役も全体閲覧可）</span></p>
           </Card>
           <Card>
             <p className="font-bold text-indigo-600 dark:text-indigo-400">部長</p>
@@ -178,21 +180,25 @@ export default function GuidePage() {
           <ul className="space-y-2">
             <li>・<b>方針／プロジェクト</b>の承認は<b>取締役2名</b>（別々の人）。<b>部長は承認できません</b>。</li>
             <li>・<b>決定事項</b>の承認は<b>担当部長1名＋取締役1名</b>（別々の人）。ただし📢全社通達・🔒取締役会限定は<b>取締役2名</b>。</li>
-            <li>・<b>編集すると承認はリセット</b>され、もう一度承認が必要です（再承認）。承認待ちの間は変更内容（前→後）が表示されます。</li>
+            <li>・<b>編集すると承認はリセット</b>され、もう一度承認が必要です（再承認）。承認待ちの間は変更内容（前→後）が表示され、<b>複数の実行タスクを変えた場合はタスクごとに「どこを何に変えたか」</b>が並びます（集計分類の変更も表示）。</li>
             <li>・<b>同じ人が二重に承認はできません</b>（承認済みは「✓承認済み」になります）。承認待ちは「あと◯名」が表示されます。</li>
             <li>・<b>承認の取り消し</b>は、自分の承認・まだ2名に達していない・<b>承認から30分以内</b>のときだけ可能です。</li>
             <li>・承認は<b>必ず本人がブラウザで操作</b>してください（代理実行は安全上ブロックされます）。</li>
+            <li>・<b>監査役</b>は全体を閲覧できますが、<b>承認・中止・削除はできません</b>（ボタンも表示されません）。</li>
           </ul>
         </Card>
       </Section>
 
-      {/* 5. 削除・編集 */}
-      <Section id="delete" no="5" title="削除・編集のときの注意">
+      {/* 5. 中止・削除・編集 */}
+      <Section id="delete" no="5" title="中止・削除・編集のときの注意">
         <Card>
           <ul className="space-y-2">
-            <li>・<b>削除は申請→承認</b>で実行されます（方針・プロジェクト・決定事項）。承認要件は早見表の「削除」列のとおり。</li>
-            <li>・<b>実行タスクの削除</b>は<b>担当者・担当部長・取締役</b>。<span className="text-rose-600 dark:text-rose-400">起案者（入力した人）は編集はできますが削除はできません。</span></li>
-            <li>・<b>実行タスクの進捗（未着手／進行中／完了）の変更は再承認不要</b>です。内容（5W1H・タグ）を変えたときだけ、そのタスクについて再承認になります。</li>
+            <li>・<b>決定事項は「削除」ではなく「中止」</b>します（実績を残すため消しません）。中止は<b>申請→2名承認</b>（担当部長＋取締役、📢全社通達・🔒取締役会限定は取締役2名）。起案者・担当者・担当部長・取締役が申請できます。</li>
+            <li>・中止した決定事項は<b>「中止一覧」</b>に移り、<b>閲覧のみ（編集・進捗変更はできません）</b>。<b>「元に戻す」（中止解除）も2名承認</b>で復活し、タスクの完了状況はそのまま保たれます。</li>
+            <li>・<b>方針・プロジェクトの削除</b>は<b>申請→承認</b>で実行されます。承認要件は早見表の「削除」列のとおり。</li>
+            <li>・<b>実行タスク（決定事項に紐づくタスク）も「削除」ではなく「中止」</b>します。中止は<b>申請→2名承認</b>（担当部長＋取締役、📢全社通達・🔒取締役会限定は取締役2名）。申請できるのは起案者・担当者・担当部長・取締役。<b>「元に戻す」（中止解除）も2名承認</b>（担当者・担当部長・取締役が申請）。</li>
+            <li>・中止した実行タスクは<b>進捗・件数の集計から外れ、閲覧のみ</b>になります。元の決定事項の中に「🚫中止中」で残り、<b>「中止一覧」にも</b>表示されます（どちらからでも中止解除できます）。</li>
+            <li>・<b>実行タスクの進捗（未着手／進行中／完了）の変更は再承認不要</b>です。内容（5W1H・集計分類・タグ）を変えたときだけ、そのタスクについて再承認になります。</li>
             <li>・<b>編集の取り消し</b>は、承認待ちの間・<b>編集した本人</b>だけが行えます（編集前の状態に戻ります）。</li>
           </ul>
         </Card>
@@ -203,7 +209,7 @@ export default function GuidePage() {
         <div className="grid sm:grid-cols-2 gap-3">
           <Card>
             <p className="font-bold text-slate-800 dark:text-slate-100 mb-1">個人タスク</p>
-            <p>自分の作業を管理するタスクです（5W1H＋優先度＋公開設定）。編集・削除できるのは<b>本人・担当部長・取締役</b>。</p>
+            <p><b>決定事項に紐づかない</b>、自分の作業を管理するタスクです（5W1H＋優先度＋公開設定）。編集・削除できるのは<b>本人・担当部長・取締役</b>。</p>
           </Card>
           <Card>
             <p className="font-bold text-slate-800 dark:text-slate-100 mb-1">共有タスク（「共有」タブ）</p>
@@ -213,6 +219,28 @@ export default function GuidePage() {
         <Card className="bg-amber-50/60 dark:bg-amber-900/10 border-amber-200 dark:border-amber-900/40">
           <p className="font-semibold text-slate-800 dark:text-slate-100 mb-1">⏰ 期限のルール</p>
           <p>期限は<b>完了予定日の 15:00（日本時間）を過ぎると「期限超過」</b>になります。ダッシュボードの「期限超過」から該当タスク・決定事項に移動できます。</p>
+        </Card>
+      </Section>
+
+      {/* 7. 一覧ページと集計分類 */}
+      <Section id="lists" no="7" title="便利な一覧と「集計分類」">
+        <div className="grid sm:grid-cols-2 gap-3">
+          <Card>
+            <p className="font-bold text-slate-800 dark:text-slate-100 mb-1">📢 全員通達一覧</p>
+            <p>全社通達（部門＝全社）の決定事項を<b>全員が一覧で確認</b>できるページです。期限切れ・完了後も<b>消えずに残り</b>、決めたことを全員で共有し続けられます。行を開くと中身（実行タスク）も閲覧できます。</p>
+          </Card>
+          <Card>
+            <p className="font-bold text-slate-800 dark:text-slate-100 mb-1">🚫 中止一覧</p>
+            <p>中止した<b>決定事項</b>と、個別に中止した<b>実行タスク</b>がここに集まります。<b>閲覧のみ</b>で、<b>「元に戻す」（中止解除）は2名承認</b>で復活します。</p>
+          </Card>
+        </div>
+        <Card className="bg-violet-50/60 dark:bg-violet-900/10 border-violet-200 dark:border-violet-900/40">
+          <p className="font-semibold text-slate-800 dark:text-slate-100 mb-1">🏷 集計分類（実行タスク）</p>
+          <ul className="space-y-1.5">
+            <li>・実行タスクに<b>集計用の分類</b>（例：キー／クラウド／DXpro／インポート／ISO／取締役会 など）を付けられます。未設定（空白）もOK。</li>
+            <li>・決定事項・実行タスクの一覧では <b>🏷 のマーク</b>で分類が分かり、<b>実行タスク画面では分類で絞り込み</b>できます。</li>
+            <li>・分類の<b>追加・名称変更・非表示・並び替え</b>は<b>「設定」ページ（システム管理者のみ）</b>で行います。各分類には誤作動防止のための<b>コード</b>が付きます。</li>
+          </ul>
         </Card>
       </Section>
 
