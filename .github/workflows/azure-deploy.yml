@@ -86,6 +86,12 @@ jobs:
             --path "backups/deploy_${TIMESTAMP}.zip"
           echo "Backed up to: backups/deploy_${TIMESTAMP}.zip"
 
+      # 管理操作（appsettings/startup-file の変更）はSCMコンテナ再起動を誘発する。
+      # 直後に OneDeploy を走らせると「管理操作とデプロイの近接」で再起動と衝突しデプロイが失敗するため、
+      # 設定が落ち着くまで待ってからデプロイする（Azure推奨の小休止）。
+      - name: Wait for app settings to settle
+        run: sleep 90
+
       # 注: 以前は「デプロイ前にアプリ停止」していたが、デプロイが詰まると本番が長時間ダウンするため廃止。
       # webapps-deploy は稼働中のアプリに対して安全に再デプロイする（ダウンタイム最小）。
       - name: Deploy via webapps-deploy
