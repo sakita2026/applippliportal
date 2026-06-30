@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getMember, roleFlags, canApprove, isApproved, type EntityType, type ApprovalRow } from '@/lib/approval';
+import { getMember, roleFlags, canApprove, isApproved, isAuditor, type EntityType, type ApprovalRow } from '@/lib/approval';
 import { fetchDirectory } from '@/lib/directory';
 import { writeAudit, entityTitle } from '@/lib/audit';
 
@@ -78,6 +78,8 @@ export async function POST(req: NextRequest) {
   const username = getUsername(req);
   const member = await getMember(username);
   if (!member) return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
+  // 監査役は承認できない（閲覧は取締役同等だが、承認・中止・削除は不可）
+  if (isAuditor(member)) return NextResponse.json({ error: '監査役は承認できません' }, { status: 403 });
 
   const { entityType, entityId } = await req.json();
   if (!['policy', 'project', 'decision'].includes(entityType) || !entityId) {

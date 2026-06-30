@@ -1,31 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { NextResponse } from 'next/server';
 
-export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await params;
-    const body = await req.json();
-    const { title, description, date, startTime, endTime, shareStatus, color, todoId } = body;
-    const event = await prisma.calendarEvent.update({
-      where: { id },
-      data: {
-        title, description: description ?? null, date,
-        startTime: startTime ?? null, endTime: endTime ?? null,
-        shareStatus, color, todoId: todoId ?? null,
-      },
-    });
-    return NextResponse.json(event);
-  } catch {
-    return NextResponse.json({ error: 'イベントの更新に失敗しました' }, { status: 500 });
-  }
+// カレンダーは未実装。所有者モデルが無く誰でも他人のイベントを操作できてしまうため、
+// 編集・削除を封鎖する（IDOR防止）。実装時に所有者(userId)で認可すること。
+export async function PUT() {
+  return NextResponse.json({ error: 'カレンダーは未実装のため、イベントの編集はできません' }, { status: 403 });
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await params;
-    await prisma.calendarEvent.delete({ where: { id } });
-    return NextResponse.json({ success: true });
-  } catch {
-    return NextResponse.json({ error: 'イベントの削除に失敗しました' }, { status: 500 });
-  }
+export async function DELETE() {
+  return NextResponse.json({ error: 'カレンダーは未実装のため、イベントの削除はできません' }, { status: 403 });
 }

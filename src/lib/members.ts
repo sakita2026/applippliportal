@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { USERS, type AppUser } from '@/lib/users';
+import { fetchDirectory } from '@/lib/directory';
 
 /** サーバー側で扱うメンバー情報（DB 行 or 定数フォールバック） */
 export type ServerMember = {
@@ -68,8 +69,17 @@ export async function verifyPassword(username: string, password: string): Promis
   return u ? fromAppUser(u) : null;
 }
 
+/**
+ * システム管理者か。**身分の正は orgportal ディレクトリに一本化**（role==='admin' ＝ orgportal isSuperAdmin）。
+ * ローカル prisma.member（影の台帳）には依存しない。ディレクトリ取得失敗時は fail-closed（false）。
+ */
 export async function isAdminUser(username: string | null | undefined): Promise<boolean> {
   if (!username) return false;
-  const m = await getMemberByUsername(username);
-  return m?.role === 'admin';
+  try {
+    const { members } = await fetchDirectory();
+    const m = members.find((x) => x.username === username && x.active);
+    return m?.role === 'admin';
+  } catch {
+    return false;
+  }
 }

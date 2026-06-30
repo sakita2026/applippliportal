@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
 export async function GET() {
@@ -10,22 +10,9 @@ export async function GET() {
   }
 }
 
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const { title, description, date, startTime, endTime, shareStatus, color, todoId } = body;
-    if (!title || !date || !shareStatus || !color) {
-      return NextResponse.json({ error: '必須項目が不足しています' }, { status: 400 });
-    }
-    const event = await prisma.calendarEvent.create({
-      data: {
-        title, description: description ?? null, date,
-        startTime: startTime ?? null, endTime: endTime ?? null,
-        shareStatus, color, todoId: todoId ?? null,
-      },
-    });
-    return NextResponse.json(event, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: 'イベントの作成に失敗しました' }, { status: 500 });
-  }
+// カレンダーは未実装。CalendarEvent に所有者(userId)列が無く、誰でも他人のイベントを
+// 作成/編集/削除できてしまうため、書込みは封鎖する（IDOR防止）。
+// 実装時：CalendarEvent へ userId を追加し、GET は所有者/共有範囲で絞り、PUT/DELETE は所有者・担当部長・取締役で認可する。
+export async function POST() {
+  return NextResponse.json({ error: 'カレンダーは未実装のため、イベントの作成はできません' }, { status: 403 });
 }
