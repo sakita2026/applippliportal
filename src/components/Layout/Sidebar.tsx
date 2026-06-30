@@ -122,7 +122,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
             <span className="block font-bold text-sm leading-tight bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
               決めたことを100％実行できる決定管理
             </span>
-            <span className="block text-xs text-slate-400 dark:text-slate-500 leading-tight mt-1">
+            <span className="block text-xs text-black leading-tight mt-1">
               決定事項・タスク・進捗・評価を一元管理
             </span>
           </span>
