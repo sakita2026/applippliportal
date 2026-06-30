@@ -16,7 +16,7 @@
 - 表示用に `workportal_user`（ユーザー名・非httpOnly）を別途保持。**認証には使わない（信頼しない）**。
 - middleware が署名・有効期限を検証。未認証は **ページ＝SSOへリダイレクト／API＝401**。
 - 検証済みユーザー名のみ信頼ヘッダ `x-wp-user` で下流へ。クライアント偽装ヘッダは除去。
-- ログインは orgportal SSO 経由（既定 24時間保持。期限内はブラウザを閉じても自動ログイン）。
+- ログインは orgportal SSO 経由。セッションCookie（`workportal_auth`／orgportal `orgportal_session`）は**maxAge無し＝セッションCookie**で、**ブラウザを閉じると破棄→再ログインが必要**。開いている間の上限は署名トークンの有効期限（24時間）。※ブラウザの「前回のタブを復元」設定が有効だとセッションCookieが保持される場合があり、それはブラウザ側仕様。
 - ログアウトは `/api/auth/logout`（両Cookie破棄＋orgportalシングルログアウト）→ `/login`。
 
 ## 2. 役割の定義
