@@ -184,7 +184,7 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
             </label>
           )}
           <div>
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">決定内容 *</label>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">決定事項 *</label>
             <input
               autoFocus
               value={title}
@@ -195,11 +195,11 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">補足説明</label>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">目的・詳細等</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              rows={2}
+              rows={8}
               className={fieldCls}
               style={{ borderColor: 'var(--border-color)' }}
             />
