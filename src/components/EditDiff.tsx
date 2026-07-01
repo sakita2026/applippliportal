@@ -1,6 +1,6 @@
 'use client';
 
-type Change = { field: string; before: string; after: string; taskId?: string };
+type Change = { field: string; before: string; after: string; taskId?: string; detail?: string };
 
 // 1件の「フィールド: 編集前 → 編集後」行
 function FieldRow({ c }: { c: Change }) {
@@ -62,11 +62,14 @@ export function EditDiff({ note }: { note?: string | null }) {
     <div className="text-xs bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2 space-y-1.5 border border-amber-200 dark:border-amber-800">
       <p className="font-bold text-amber-700 dark:text-amber-300">📝 この承認待ちで変更された内容</p>
 
-      {/* 実行タスクの追加 */}
+      {/* 実行タスクの追加（担当/部署/期限も表示） */}
       {addedTasks.map((c, i) => (
-        <div key={`add-${i}`} className="flex items-center gap-1.5">
-          <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-bold flex-shrink-0">追加</span>
-          <span className="text-slate-700 dark:text-slate-200 break-all">新しい実行タスクが追加されました：「<span className="font-bold">{c.after}</span>」</span>
+        <div key={`add-${i}`} className="space-y-0.5">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-bold flex-shrink-0">追加</span>
+            <span className="text-slate-700 dark:text-slate-200 break-all">新しい実行タスクが追加されました：「<span className="font-bold">{c.after}</span>」</span>
+          </div>
+          {c.detail && <div className="pl-2 text-slate-500 dark:text-slate-400 break-all">{c.detail}</div>}
         </div>
       ))}
 

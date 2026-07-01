@@ -1,7 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getMember, isDirectorLike } from '@/lib/approval';
+import { fetchDirectory } from '@/lib/directory';
 import { writeAudit } from '@/lib/audit';
+
+// 追加タスクの詳細（作成者/担当/部署/開始/完了予定）を差分表示用の文字列にする
+async function buildAddDetail(
+  t: { who?: string | null; departmentId?: string | null; startDate?: string | null; whenDue?: string | null },
+  creator?: string | null,
+): Promise<string> {
+  const parts: string[] = [];
+  if (creator || t.who) {
+    const { members } = await fetchDirectory().catch(() => ({ members: [] as { username: string; name: string }[] }));
+    const nm = (u: string) => members.find((m) => m.username === u)?.name ?? u;
+    if (creator) parts.push(`作成者: ${nm(creator)}`);
+    if (t.who) parts.push(`担当: ${nm(t.who)}`);
+  }
+  if (t.departmentId) {
+    const depts = await prisma.department.findMany();
+    parts.push(`部署: ${depts.find((d) => d.id === t.departmentId)?.name ?? t.departmentId}`);
+  }
+  if (t.startDate) parts.push(`開始: ${t.startDate}`);
+  if (t.whenDue) parts.push(`完了予定: ${t.whenDue}`);
+  return parts.join(' ／ ');
+}
 
 const DECISION_INCLUDE = {
   tasks: { orderBy: { sortOrder: 'asc' as const }, include: { projects: { include: { project: true } }, policies: { include: { policy: true } } } },
@@ -48,8 +70,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
 
     if (requireApproval) {
-      // 決定事項を再承認待ちに戻し、何を追加したかを差分で明示
-      const note = JSON.stringify([{ field: '追加した実行タスク', before: '', after: taskName }]);
+      // 決定事項を再承認待ちに戻し、何を追加したかを差分で明示。
+      // 既に承認待ち中なら既存の差分（他の追加・タスク編集）を保持して追記＝上書きで消さない（複数追加が全部残る）。
+      type Ch = { field: string; before: string; after: string; taskId?: string; detail?: string };
+      let existing: Ch[] = [];
+      if (decision.status === 'pending' && decision.editNote) {
+        try { const p = JSON.parse(decision.editNote); if (Array.isArray(p)) existing = p as Ch[]; } catch { existing = []; }
+      }
+      const detail = await buildAddDetail({ who, departmentId, startDate, whenDue }, username);
+      const note = JSON.stringify([...existing, { field: '追加した実行タスク', before: '', after: taskName, detail }]);
       await prisma.approval.deleteMany({ where: { entityType: 'decision', entityId: id } });
       await prisma.decision.update({ where: { id }, data: { status: 'pending', approvedBy: null, approvedAt: null, editNote: note } });
     }

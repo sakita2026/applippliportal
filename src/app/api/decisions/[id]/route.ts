@@ -35,7 +35,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!before || !canManageDecision(before, actor, assigneeDept)) {
       return NextResponse.json({ error: '編集は入力者・担当者・担当部長・取締役のみ可能です' }, { status: 403 });
     }
-    const changes: { field: string; before: string; after: string }[] = [];
+    const changes: { field: string; before: string; after: string; detail?: string }[] = [];
     if (before) {
       if (title !== undefined && title !== before.title) changes.push({ field: '件名', before: before.title, after: title });
       if (description !== undefined && (description ?? null) !== before.description) changes.push({ field: '説明', before: before.description ?? '', after: description ?? '' });
@@ -78,16 +78,31 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         }
       }
     }
-    // 編集時に追加された実行タスク（追加分は再承認後に稼働＝pendingEdit）。差分にも明示。
+    // 編集時に追加された実行タスク（追加分は再承認後に稼働＝pendingEdit）。差分に担当/部署/期限も明示。
     const taskList: Array<Record<string, unknown>> = Array.isArray(newTasks) ? newTasks.filter((t) => t && typeof t.what === 'string' && (t.what as string).trim() !== '') : [];
-    for (const t of taskList) changes.push({ field: '追加した実行タスク', before: '', after: String(t.what).trim() });
+    if (taskList.length > 0) {
+      const [{ members }, depts] = await Promise.all([
+        fetchDirectory().catch(() => ({ members: [] as { username: string; name: string }[] })),
+        prisma.department.findMany(),
+      ]);
+      const actorName = username ? (members.find((m) => m.username === username)?.name ?? username) : '';
+      for (const t of taskList) {
+        const parts: string[] = [];
+        if (actorName) parts.push(`作成者: ${actorName}`);
+        if (t.who) parts.push(`担当: ${members.find((m) => m.username === t.who)?.name ?? String(t.who)}`);
+        if (t.departmentId) parts.push(`部署: ${depts.find((d) => d.id === t.departmentId)?.name ?? String(t.departmentId)}`);
+        if (t.startDate) parts.push(`開始: ${String(t.startDate)}`);
+        if (t.whenDue) parts.push(`完了予定: ${String(t.whenDue)}`);
+        changes.push({ field: '追加した実行タスク', before: '', after: String(t.what).trim(), detail: parts.join(' ／ ') });
+      }
+    }
     if (editReason) changes.push({ field: '理由', before: '', after: editReason });
-    // 既に承認待ち（pending）中で、実行タスク編集の差分（taskId 付き）が記録されていれば保持し、
+    // 既に承認待ち（pending）中で、実行タスク編集の差分（taskId 付き）や過去の追加タスク差分が記録されていれば保持し、
     // 決定本体の変更（taskId 無し）と統合する。承認済み/完了からの編集は新サイクルとして作り直す。
-    type Ch = { field: string; before: string; after: string; taskId?: string };
+    type Ch = { field: string; before: string; after: string; taskId?: string; detail?: string };
     let existingTaskDiffs: Ch[] = [];
     if (before?.status === 'pending' && before.editNote) {
-      try { const p = JSON.parse(before.editNote); if (Array.isArray(p)) existingTaskDiffs = (p as Ch[]).filter((c) => c.taskId); } catch { existingTaskDiffs = []; }
+      try { const p = JSON.parse(before.editNote); if (Array.isArray(p)) existingTaskDiffs = (p as Ch[]).filter((c) => c.taskId || c.field === '追加した実行タスク'); } catch { existingTaskDiffs = []; }
     }
     const merged = [...changes, ...existingTaskDiffs];
     const note = merged.length ? JSON.stringify(merged) : null;
