@@ -162,12 +162,11 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
   const fieldCls = 'w-full px-3 py-2 rounded-lg border text-sm bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div
-        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl p-6"
-        style={{ background: 'var(--card-bg)' }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="max-w-2xl mx-auto rounded-2xl border p-6" style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
+        <button type="button" onClick={onClose} className="mb-3 inline-flex items-center gap-1 text-sm text-indigo-500 hover:text-indigo-600">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+          一覧に戻る
+        </button>
         <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4">{isEdit ? '決定事項を編集' : '新しい決定事項'}</h2>
         {isEdit && <p className="text-xs text-amber-500 -mt-3 mb-3">編集すると承認はリセットされ、再承認が必要になります（タスクの編集は各タスクから行います）。</p>}
         {isEdit && (
@@ -208,7 +207,7 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
 
           {/* 担当部署（担当部長の承認判定に使用） */}
           <div>
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">担当（部署の部長＋取締役1名で承認。全員は取締役2名で承認）</label>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">担当部門（部署の部長＋取締役1名で承認。全員は取締役2名で承認）</label>
             <select value={deptId} onChange={(e) => setDeptId(e.target.value)} className={fieldCls} style={{ borderColor: 'var(--border-color)' }}>
               <option value="">未設定</option>
               <option value="all">全員（全社通達）</option>
@@ -229,7 +228,7 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
           <div>
             <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">実行管理集計区分</label>
             <select value={segment} onChange={(e) => setSegment(e.target.value)} className={fieldCls} style={{ borderColor: 'var(--border-color)' }}>
-              <option value="">空白（未選択）</option>
+              <option value=""></option>
               {activeSegments(state.segments).map((s) => <option key={s.code} value={s.code}>{s.label}</option>)}
             </select>
           </div>
@@ -386,7 +385,6 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
             </button>
           </div>
         </form>
-      </div>
     </div>
   );
 }
@@ -996,6 +994,15 @@ export default function DecisionsPage() {
     { key: 'done', label: '完了', count: counts.done },
   ];
 
+  // 作成/編集フォームは「ページ」として全面表示（モーダルではないので画面外クリックで消えない＝入力途中の消失を防ぐ）
+  if (showForm || editDecision) {
+    return (
+      <div className="p-4 sm:p-6 lg:p-8 min-h-full">
+        <DecisionForm key={editDecision?.id ?? 'new'} initial={editDecision ?? undefined} onClose={() => { setShowForm(false); setEditDecision(null); }} />
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-5 min-h-full">
       {/* Header */}
@@ -1071,10 +1078,6 @@ export default function DecisionsPage() {
         <div className="space-y-3">
           {filtered.map((d) => <DecisionCard key={d.id} decision={d} isAdmin={isAdmin} onEdit={setEditDecision} autoOpen={d.id === autoDec} autoEditTaskId={d.id === autoDec ? autoTask : null} />)}
         </div>
-      )}
-
-      {(showForm || editDecision) && (
-        <DecisionForm key={editDecision?.id ?? 'new'} initial={editDecision ?? undefined} onClose={() => { setShowForm(false); setEditDecision(null); }} />
       )}
     </div>
   );
