@@ -745,122 +745,124 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId, onReveal }: 
 
   return (
     <div ref={cardRef} className="rounded-2xl border p-4 sm:p-5 scroll-mt-24 transition-shadow" style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${STATUS_BADGE[decision.status]}`}>
-              {DECISION_STATUS_LABELS[decision.status]}
-            </span>
-            <h3 className="font-bold text-slate-800 dark:text-slate-100 break-words">{decision.title}</h3>
-            {decision.boardOnly && (
-              <span title="取締役＋担当部長のみに表示" className="text-xs font-medium px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-600 border border-rose-200 dark:border-rose-800">🔒 取締役会限定（取締役＋担当部長のみ表示）</span>
-            )}
-            {decision.departmentId === 'all' && (
-              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-600 border border-rose-200 dark:border-rose-800">📢 全員通達</span>
-            )}
-            {segmentLabel(decision.segment, state.segments) && (
-              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800">🗂 {segmentLabel(decision.segment, state.segments)}</span>
-            )}
-          </div>
-          {decision.description && (
-            <DescriptionText text={decision.description} />
-          )}
-          {((decision.policies && decision.policies.length > 0) || (decision.projects && decision.projects.length > 0)) && (
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {decision.policies?.map((p) => (
-                <span key={p.policyId} className="text-xs px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-600 border border-amber-200 dark:border-amber-800">方針: {p.policy.name}</span>
-              ))}
-              {decision.projects?.map((p) => (
-                <span key={p.projectId} className="text-xs px-2 py-0.5 rounded-full bg-sky-50 dark:bg-sky-900/20 text-sky-600 border border-sky-200 dark:border-sky-800">PJ: {p.project.name}</span>
-              ))}
-            </div>
-          )}
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-slate-400">
-            <span>起案: {resolveMemberName(state.members, decision.createdBy)}</span>
-            {deptName && <span>部門: {deptName}</span>}
-            {decision.assigneeUsername && <span>担当: {resolveMemberName(state.members, decision.assigneeUsername)}</span>}
-            {decision.startDate && <span>開始: {decision.startDate}</span>}
-            {decision.dueDate && <span>完了予定: {decision.dueDate}</span>}
-            {decision.approvedBy && <span>最終承認: {resolveMemberName(state.members, decision.approvedBy)}</span>}
-            <span>{format(new Date(decision.createdAt), 'M月d日', { locale: ja })}</span>
-            {decision.status === 'pending' && <span className="text-amber-500 font-medium">要承認: {requiredText}</span>}
-          </div>
-          {decision.status === 'pending' && (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium">
-                承認 {requiredCount - remaining}/{requiredCount}
-              </span>
-              {approvedList.map((a) => (
-                <span key={a.approver} className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                  ✓ {resolveMemberName(state.members, a.approver)}{a.asDirector ? '（取締役）' : a.asManager ? '（部長）' : ''}
-                </span>
-              ))}
-              {remaining > 0 && (
-                <span className="text-amber-600 dark:text-amber-400">あと{remaining}名の承認が必要{remainingNeed ? `（${remainingNeed}）` : ''}</span>
-              )}
-            </div>
-          )}
-          {decision.status === 'pending' && iApproved && (
-            <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-              ✓ あなたは承認済みです{remaining > 0 ? `（残り${remaining}名の承認待ち${remainingNeed ? `：${remainingNeed}` : ''}）` : ''}
-            </p>
-          )}
-          {decision.status === 'pending' && decision.editNote && (
-            <div className="mt-1.5"><EditDiff note={decision.editNote} /></div>
-          )}
-        </div>
-        <div className="flex items-center gap-1 flex-shrink-0 flex-wrap">
-          {canApproveThis && !decision.deleteRequested && (
-            <button onClick={handleApprove} disabled={busy}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-500 text-white hover:bg-indigo-600 transition-colors disabled:opacity-60">
-              {busy ? '承認中…' : '承認する'}
-            </button>
-          )}
-          {decision.status === 'pending' && iApproved && !decision.deleteRequested && (
-            <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 flex-shrink-0">
-              ✓ 承認済み
-            </span>
-          )}
-          {canUndoApprove && (
-            <button onClick={handleUndoApprove} disabled={busy}
-              className="px-2 py-1.5 rounded-lg text-xs font-medium text-amber-600 border border-amber-300 dark:border-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors" title="自分の承認を取り消す（30分以内）">
-              承認取消
-            </button>
-          )}
-          {canUndoEdit && (
-            <button onClick={handleUndoEdit} disabled={busy}
-              className="px-2 py-1.5 rounded-lg text-xs font-medium text-slate-500 border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" title="この編集を取り消して編集前に戻す（承認待ちの間のみ）">
-              編集取消
-            </button>
-          )}
-          {canEdit && (
-            <button onClick={() => onEdit(decision)} disabled={busy}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors" title="編集（再承認になります）">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-            </button>
-          )}
-          {decision.archived ? (
-            <Link href="/cancelled" className="text-xs px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-600 border border-rose-200 dark:border-rose-800">🚫 中止済み（中止一覧へ）</Link>
-          ) : decision.deleteRequested ? (
-            <>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-600">中止承認待ち</span>
-              {eligible && (
-                <button onClick={handleRequestDelete} disabled={busy}
-                  className="px-2 py-1 rounded-lg text-xs font-medium bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-60">中止を承認</button>
-              )}
-              {canCancelDec && (
-                <button onClick={handleCancelDelete} disabled={busy}
-                  className="px-2 py-1 rounded-lg text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">取消</button>
-              )}
-            </>
-          ) : canCancelDec && (
-            <button onClick={handleRequestDelete} disabled={busy}
-              className="px-2 py-1 rounded-lg text-xs font-medium text-rose-500 border border-rose-200 dark:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors" title="中止を申請">中止</button>
-          )}
-        </div>
+      {/* ①状態マーク＋区分バッジ */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${STATUS_BADGE[decision.status]}`}>
+          {DECISION_STATUS_LABELS[decision.status]}
+        </span>
+        {decision.boardOnly && (
+          <span title="取締役＋担当部長のみに表示" className="text-xs font-medium px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-600 border border-rose-200 dark:border-rose-800">🔒 取締役会限定（取締役＋担当部長のみ表示）</span>
+        )}
+        {decision.departmentId === 'all' && (
+          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-600 border border-rose-200 dark:border-rose-800">📢 全員通達</span>
+        )}
+        {segmentLabel(decision.segment, state.segments) && (
+          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800">🗂 {segmentLabel(decision.segment, state.segments)}</span>
+        )}
       </div>
+
+      {/* ②操作ボタン（承認待ちマークの下・タイトルの上）。PC/スマホ共通で横並び・折り返し。ボタンが無ければ非表示 */}
+      <div className="flex items-center gap-1 flex-wrap mt-2 empty:hidden">
+        {canApproveThis && !decision.deleteRequested && (
+          <button onClick={handleApprove} disabled={busy}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-500 text-white hover:bg-indigo-600 transition-colors disabled:opacity-60">
+            {busy ? '承認中…' : '承認する'}
+          </button>
+        )}
+        {decision.status === 'pending' && iApproved && !decision.deleteRequested && (
+          <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 flex-shrink-0">
+            ✓ 承認済み
+          </span>
+        )}
+        {canUndoApprove && (
+          <button onClick={handleUndoApprove} disabled={busy}
+            className="px-2 py-1.5 rounded-lg text-xs font-medium text-amber-600 border border-amber-300 dark:border-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors" title="自分の承認を取り消す（30分以内）">
+            承認取消
+          </button>
+        )}
+        {canUndoEdit && (
+          <button onClick={handleUndoEdit} disabled={busy}
+            className="px-2 py-1.5 rounded-lg text-xs font-medium text-slate-500 border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" title="この編集を取り消して編集前に戻す（承認待ちの間のみ）">
+            編集取消
+          </button>
+        )}
+        {canEdit && (
+          <button onClick={() => onEdit(decision)} disabled={busy}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors" title="編集（再承認になります）">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+        )}
+        {decision.archived ? (
+          <Link href="/cancelled" className="text-xs px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-600 border border-rose-200 dark:border-rose-800">🚫 中止済み（中止一覧へ）</Link>
+        ) : decision.deleteRequested ? (
+          <>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-600">中止承認待ち</span>
+            {eligible && (
+              <button onClick={handleRequestDelete} disabled={busy}
+                className="px-2 py-1 rounded-lg text-xs font-medium bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-60">中止を承認</button>
+            )}
+            {canCancelDec && (
+              <button onClick={handleCancelDelete} disabled={busy}
+                className="px-2 py-1 rounded-lg text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">取消</button>
+            )}
+          </>
+        ) : canCancelDec && (
+          <button onClick={handleRequestDelete} disabled={busy}
+            className="px-2 py-1 rounded-lg text-xs font-medium text-rose-500 border border-rose-200 dark:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors" title="中止を申請">中止</button>
+        )}
+      </div>
+
+      {/* ③タイトル */}
+      <h3 className="font-bold text-slate-800 dark:text-slate-100 break-words mt-2">{decision.title}</h3>
+
+      {decision.description && (
+        <DescriptionText text={decision.description} />
+      )}
+      {((decision.policies && decision.policies.length > 0) || (decision.projects && decision.projects.length > 0)) && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {decision.policies?.map((p) => (
+            <span key={p.policyId} className="text-xs px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-600 border border-amber-200 dark:border-amber-800">方針: {p.policy.name}</span>
+          ))}
+          {decision.projects?.map((p) => (
+            <span key={p.projectId} className="text-xs px-2 py-0.5 rounded-full bg-sky-50 dark:bg-sky-900/20 text-sky-600 border border-sky-200 dark:border-sky-800">PJ: {p.project.name}</span>
+          ))}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-slate-400">
+        <span>起案: {resolveMemberName(state.members, decision.createdBy)}</span>
+        {deptName && <span>部門: {deptName}</span>}
+        {decision.assigneeUsername && <span>担当: {resolveMemberName(state.members, decision.assigneeUsername)}</span>}
+        {decision.startDate && <span>開始: {decision.startDate}</span>}
+        {decision.dueDate && <span>完了予定: {decision.dueDate}</span>}
+        {decision.approvedBy && <span>最終承認: {resolveMemberName(state.members, decision.approvedBy)}</span>}
+        <span>{format(new Date(decision.createdAt), 'M月d日', { locale: ja })}</span>
+        {decision.status === 'pending' && <span className="text-amber-500 font-medium">要承認: {requiredText}</span>}
+      </div>
+      {decision.status === 'pending' && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium">
+            承認 {requiredCount - remaining}/{requiredCount}
+          </span>
+          {approvedList.map((a) => (
+            <span key={a.approver} className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+              ✓ {resolveMemberName(state.members, a.approver)}{a.asDirector ? '（取締役）' : a.asManager ? '（部長）' : ''}
+            </span>
+          ))}
+          {remaining > 0 && (
+            <span className="text-amber-600 dark:text-amber-400">あと{remaining}名の承認が必要{remainingNeed ? `（${remainingNeed}）` : ''}</span>
+          )}
+        </div>
+      )}
+      {decision.status === 'pending' && iApproved && (
+        <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+          ✓ あなたは承認済みです{remaining > 0 ? `（残り${remaining}名の承認待ち${remainingNeed ? `：${remainingNeed}` : ''}）` : ''}
+        </p>
+      )}
+      {decision.status === 'pending' && decision.editNote && (
+        <div className="mt-1.5"><EditDiff note={decision.editNote} /></div>
+      )}
 
       {/* 進捗バー */}
       {total > 0 && (
