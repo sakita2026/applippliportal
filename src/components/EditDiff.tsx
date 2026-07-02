@@ -59,7 +59,7 @@ export function EditDiff({ note }: { note?: string | null }) {
   }
 
   return (
-    <div className="text-xs bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2 space-y-1.5 border border-amber-200 dark:border-amber-800">
+    <div className="text-sm bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2 space-y-1.5 border border-amber-200 dark:border-amber-800">
       <p className="font-bold text-amber-700 dark:text-amber-300">📝 この承認待ちで変更された内容</p>
 
       {/* 実行タスクの追加（担当/部署/期限も表示） */}

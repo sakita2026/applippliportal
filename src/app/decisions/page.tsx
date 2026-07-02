@@ -929,7 +929,7 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId, onReveal }: 
               {editingTaskId === t.id ? (
                 <InlineTaskEditor task={{ ...t, decisionId: decision.id }} onClose={() => setEditingTaskId(null)} onSaved={onReveal} />
               ) : expandedTaskId === t.id && (
-                <div className="pl-4 mt-1 grid grid-cols-[5.5rem_1fr] gap-x-2 gap-y-0.5 text-xs">
+                <div className="pl-4 mt-1 grid grid-cols-[5.5rem_1fr] gap-x-2 gap-y-1 text-sm">
                   <span className="text-slate-400">内容</span><span className="text-slate-700 dark:text-slate-200 break-words">{t.what}</span>
                   {decision.createdBy && (<><span className="text-slate-400">決定事項作成者</span><span className="text-slate-700 dark:text-slate-200">{resolveMemberName(state.members, decision.createdBy)}</span></>)}
                   {t.createdBy && (<><span className="text-slate-400">実行タスク作成者</span><span className="text-slate-700 dark:text-slate-200">{resolveMemberName(state.members, t.createdBy)}</span></>)}
