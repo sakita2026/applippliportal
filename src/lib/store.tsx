@@ -244,6 +244,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
     apiFetch<Decision[]>('/api/decisions').then((d) => dispatch({ type: 'SET_DECISIONS', payload: d })).catch(() => {});
     apiFetch<Todo[]>('/api/todos').then((t) => dispatch({ type: 'SET_TODOS', payload: t })).catch(() => {});
+    // 集計分類・実行管理集計区分も再取得（初回ロードで一時的に取得失敗して
+    // プルダウンが空になっても、リロード無しで自動復帰させる）。
+    apiFetch<CategoryOption[]>('/api/categories').then((c) => dispatch({ type: 'SET_CATEGORIES', payload: c })).catch(() => {});
+    apiFetch<SegmentOption[]>('/api/segments').then((s) => dispatch({ type: 'SET_SEGMENTS', payload: s })).catch(() => {});
   }, []);
 
   // (1) タブに戻った時・再表示時
