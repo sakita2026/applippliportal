@@ -832,7 +832,7 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId, onReveal }: 
           ))}
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-slate-400">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-slate-800 dark:text-slate-100">
         <span>起案: {resolveMemberName(state.members, decision.createdBy)}</span>
         {deptName && <span>部門: {deptName}</span>}
         {decision.assigneeUsername && <span>担当: {resolveMemberName(state.members, decision.assigneeUsername)}</span>}

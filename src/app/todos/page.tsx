@@ -332,7 +332,7 @@ function TodoItem({ todo, onEdit, onDelete, filterStatus, currentUsername }: {
             </button>
           )}
 
-          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-800 dark:text-slate-100">
             {ownerName && <span>作成者: {ownerName}</span>}
             {todo.who && <span>担当: {resolveMemberName(state.members, todo.who)}</span>}
             {todo.departmentId && <span>部門: {getDepartmentName(todo.departmentId, state.departments)}</span>}
@@ -581,7 +581,7 @@ function DecisionTaskItem({ task, filterStatus }: { task: ActiveDecisionTask; fi
               </svg>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-800 dark:text-slate-100">
               {task.whenDue && (
                 <span className={`flex items-center gap-1 ${isOverdue ? 'text-rose-500 font-medium' : ''}`}>
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -630,7 +630,7 @@ function DecisionTaskItem({ task, filterStatus }: { task: ActiveDecisionTask; fi
 
           {/* クリックで展開：決定事項＋5W1H（実行タスク）をまとめて表示 */}
           {open && !editing && (
-            <div className="mt-2 pt-2 border-t text-xs text-slate-500 dark:text-slate-400 space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+            <div className="mt-2 pt-2 border-t text-sm text-slate-800 dark:text-slate-100 space-y-1" style={{ borderColor: 'var(--border-color)' }}>
               <p>決定事項: <Link href={task.decisionArchived ? '/cancelled' : `/decisions?dec=${task.decisionId}`} className="text-indigo-500 hover:underline">{task.decisionTitle}</Link>{task.decisionArchived && <span className="ml-1 text-xs text-rose-600">🚫 中止中</span>}</p>
               {task.decisionCreatedBy && <p>決定事項作成者: {resolveMemberName(state.members, task.decisionCreatedBy)}</p>}
               <div className="mt-1 pl-3 border-l-2 space-y-1" style={{ borderColor: 'var(--border-color)' }}>
