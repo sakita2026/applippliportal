@@ -266,24 +266,7 @@ function TodoItem({ todo, onEdit, onDelete, filterStatus, currentUsername }: {
       todo.status === 'done' ? 'opacity-60' : ''
     }`} style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(8px)' }}>
       <div className="flex items-start gap-3 p-4">
-        {/* Checkbox */}
-        <button
-          onClick={() => changeTodoStatus(todo.status === 'done' ? 'todo' : 'done')}
-          disabled={!canEdit || exiting}
-          title={!canEdit ? '担当者・担当部長・取締役のみ変更できます' : undefined}
-          className={`w-5 h-5 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center transition-all ${
-            todo.status === 'done'
-              ? 'bg-emerald-400 border-emerald-400'
-              : 'border-slate-300 dark:border-slate-600 hover:border-indigo-400'
-          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          {todo.status === 'done' && (
-            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-            </svg>
-          )}
-        </button>
-
+        {/* 完了チェック円は削除（完了は「完了」ステータスボタンで行う） */}
         {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-1">
@@ -533,22 +516,7 @@ function DecisionTaskItem({ task, filterStatus }: { task: ActiveDecisionTask; fi
     <div className={`rounded-xl border transition-all duration-200 hover:shadow-sm group ${task.status === 'done' ? 'opacity-60' : ''}`}
       style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(8px)' }}>
       <div className="flex items-start gap-3 p-4">
-        {/* 完了トグル */}
-        <button
-          onClick={() => changeStatus(task.status === 'done' ? 'todo' : 'done')}
-          disabled={!canEdit || busy}
-          title={!canEdit ? '担当者・担当部長・取締役のみ変更できます' : undefined}
-          className={`w-5 h-5 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center transition-all ${
-            task.status === 'done' ? 'bg-emerald-400 border-emerald-400' : 'border-slate-300 dark:border-slate-600 hover:border-indigo-400'
-          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          {task.status === 'done' && (
-            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-            </svg>
-          )}
-        </button>
-
+        {/* 完了チェック円は削除（完了は「完了」ステータスボタンで行う） */}
         <div className="flex-1 min-w-0">
           {/* タイトル＋メタ情報のどこをクリックしても展開（状態変更・編集などのボタンは別領域） */}
           <div
