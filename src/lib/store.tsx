@@ -1,6 +1,7 @@
 'use client';
 
-import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 import type {
   Todo, TodoStep, CalendarEvent, Priority, TodoStatus, ShareStatus,
   Decision, DecisionTask, Department, CreateDecisionRequest, Member, CategoryOption, SegmentOption,
@@ -235,6 +236,34 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       .then((segments) => dispatch({ type: 'SET_SEGMENTS', payload: segments }))
       .catch(() => { /* 未作成時は無視 */ });
   }, []);
+
+  // 決定事項/個人タスクを最新化する（初回読み込み以降の状態変化を取り込む）。
+  // ダッシュボードで承認した内容が、決定事項ページ・実行タスクページで
+  // 「未承認」のまま残らないようにするための再同期。
+  const resync = useCallback(() => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    apiFetch<Decision[]>('/api/decisions').then((d) => dispatch({ type: 'SET_DECISIONS', payload: d })).catch(() => {});
+    apiFetch<Todo[]>('/api/todos').then((t) => dispatch({ type: 'SET_TODOS', payload: t })).catch(() => {});
+  }, []);
+
+  // (1) タブに戻った時・再表示時
+  useEffect(() => {
+    window.addEventListener('focus', resync);
+    document.addEventListener('visibilitychange', resync);
+    return () => {
+      window.removeEventListener('focus', resync);
+      document.removeEventListener('visibilitychange', resync);
+    };
+  }, [resync]);
+
+  // (2) ページ遷移時（ダッシュボード→決定事項/実行タスク等のクライアント遷移）。
+  //     初回マウント時は上の初期ロードと重複するためスキップ。
+  const pathname = usePathname();
+  const firstNav = useRef(true);
+  useEffect(() => {
+    if (firstNav.current) { firstNav.current = false; return; }
+    resync();
+  }, [pathname, resync]);
 
   const addTodo = useCallback(async (data: Omit<Todo, 'id' | 'createdAt' | 'steps'>) => {
     const todo = await apiFetch<Todo>('/api/todos', { method: 'POST', body: JSON.stringify(data) });

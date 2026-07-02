@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback, createContext, useContext } from 'react';
 import Link from 'next/link';
 import { useStore, PRIORITY_LABELS, STATUS_LABELS, resolveMemberName } from '@/lib/store';
 import { jstToday, jstDateStr, isOverdueDue, jstPeriodStartMs, type Period } from '@/lib/date';
@@ -13,6 +13,22 @@ import { useCurrentUser } from '@/lib/useCurrentUser';
 import { getDepartmentName } from '@/lib/departments';
 import { ScopeControl } from '@/components/ScopeControl';
 import { taskVisible, defaultView, canManageDecisionTask, canManageTodo, type View } from '@/lib/visibility';
+
+// 完了トースト：タスク完了時に「✓ 〇〇 を完了にしました／取り消す」を数秒表示する。
+// 完了すると一覧（未完了フィルタ）から即消えて分かりづらく、続けて押すと繰り上がった別タスクを
+// 誤って完了してしまう問題への対策。押下が明確になり、誤操作もその場で取り消せる。
+type CompleteToast = (name: string, undo: () => void | Promise<void>) => void;
+const CompleteToastContext = createContext<CompleteToast>(() => {});
+const useCompleteToast = () => useContext(CompleteToastContext);
+
+// 現在のステータス絞り込みに、その status が該当するか（一覧に表示され続けるか）。
+// 一覧の絞り込みロジック（filteredDecisionTasks / filteredTodos）と揃える。
+// これが false になる変更＝その行は一覧から外れるので、畳むアニメーションを見せる。
+function matchesStatusFilter(filter: FilterStatus, status: TodoStatus): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'incomplete') return status !== 'done';
+  return status === filter;
+}
 
 const PRIORITY_COLORS: Record<Priority, string> = {
   high: 'text-rose-500 bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800',
@@ -198,16 +214,35 @@ function StepCheckbox({ todoId, step }: { todoId: string; step: TodoStep }) {
 }
 
 // ── Todo Item ────────────────────────────────────────────────────────────────
-function TodoItem({ todo, onEdit, onDelete, onToggle, currentUsername }: {
+function TodoItem({ todo, onEdit, onDelete, filterStatus, currentUsername }: {
   todo: Todo;
   onEdit: (t: Todo) => void;
   onDelete: (id: string) => void;
-  onToggle: (t: Todo) => void;
+  filterStatus: FilterStatus;
   currentUsername: string | null;
 }) {
   const { state, updateTodo } = useStore();
+  const showCompleteToast = useCompleteToast();
   const [stepsOpen, setStepsOpen] = useState(false);
+  const [exiting, setExiting] = useState(false); // ステータス変更で一覧から外れる時：行を畳むアニメーション中
   const isOverdue = todo.status !== 'done' && isOverdueDue(todo.dueDate);
+
+  // ステータス変更：変更後にこの一覧から外れる場合は、先に行を畳んでから反映する
+  // （完了にする時／完了ページから未着手・進行中に戻す時など、下のタスクがズルッと繰り上がる）。
+  const changeTodoStatus = async (next: TodoStatus) => {
+    if (!canEdit || exiting || next === todo.status) return;
+    const prev = todo.status;
+    const willLeave = !matchesStatusFilter(filterStatus, next);
+    if (willLeave) {
+      setExiting(true);
+      await new Promise((r) => setTimeout(r, 300));
+      updateTodo({ ...todo, status: next });
+      if (next === 'done') showCompleteToast(todo.title, () => updateTodo({ ...todo, status: prev }));
+      setExiting(false); // フィルタ次第で残る場合は元の高さに戻す
+    } else {
+      updateTodo({ ...todo, status: next });
+    }
+  };
   const steps: TodoStep[] = []; // 工程は廃止（表示しない）
   const isOwnTask = !todo.userId || todo.userId === currentUsername;
   const ownerName = todo.userId ? resolveMemberName(state.members, todo.userId) : null;
@@ -225,14 +260,16 @@ function TodoItem({ todo, onEdit, onDelete, onToggle, currentUsername }: {
   }, [hasSteps]);
 
   return (
+    <div className={`grid transition-all duration-300 ease-in-out ${exiting ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr]'}`}>
+    <div className="overflow-hidden min-h-0">
     <div className={`rounded-xl border transition-all duration-200 hover:shadow-sm group ${
       todo.status === 'done' ? 'opacity-60' : ''
     }`} style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(8px)' }}>
       <div className="flex items-start gap-3 p-4">
         {/* Checkbox */}
         <button
-          onClick={() => onToggle(todo)}
-          disabled={!canEdit}
+          onClick={() => changeTodoStatus(todo.status === 'done' ? 'todo' : 'done')}
+          disabled={!canEdit || exiting}
           title={!canEdit ? '担当者・担当部長・取締役のみ変更できます' : undefined}
           className={`w-5 h-5 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center transition-all ${
             todo.status === 'done'
@@ -323,7 +360,7 @@ function TodoItem({ todo, onEdit, onDelete, onToggle, currentUsername }: {
           {/* ステータス切替（担当者・担当部長・取締役のみ） */}
           <div className="flex gap-1 mt-2">
             {(['todo', 'in_progress', 'done'] as TodoStatus[]).map((s) => (
-              <button key={s} disabled={!canEdit} onClick={() => { if (canEdit && s !== todo.status) updateTodo({ ...todo, status: s }); }}
+              <button key={s} disabled={!canEdit || exiting} onClick={() => changeTodoStatus(s)}
                 title={!canEdit ? '担当者・担当部長・取締役のみ変更できます' : undefined}
                 className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
                   todo.status === s ? 'bg-indigo-500 text-white' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -382,6 +419,8 @@ function TodoItem({ todo, onEdit, onDelete, onToggle, currentUsername }: {
         </div>
       )}
     </div>
+    </div>
+    </div>
   );
 }
 
@@ -393,12 +432,13 @@ type ActiveDecisionTask = DecisionTask & { decisionTitle: string; boardOnly?: bo
 const DT_STATUS: TodoStatus[] = ['todo', 'in_progress', 'done'];
 
 // ── Decision Task Item（決定事項由来の 5W1H タスク）─────────────────────────────
-function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
+function DecisionTaskItem({ task, filterStatus }: { task: ActiveDecisionTask; filterStatus: FilterStatus }) {
   const { state, updateDecisionTask, editDecisionTask, undoEditTask } = useStore();
   const me = useCurrentUser();
-  const [open, setOpen] = useState(false);      // 第1段：決定事項を表示
-  const [taskOpen, setTaskOpen] = useState(false); // 第2段：5W1H（実行タスク詳細）を表示
+  const showCompleteToast = useCompleteToast();
+  const [open, setOpen] = useState(false);      // クリックで展開（決定事項＋5W1Hをまとめて表示）
   const [busy, setBusy] = useState(false);
+  const [exiting, setExiting] = useState(false); // 完了時：行を畳むアニメーション中
   const [editing, setEditing] = useState(false);
   const [editErr, setEditErr] = useState('');
   const [draft, setDraft] = useState({
@@ -441,6 +481,23 @@ function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
 
   const changeStatus = async (status: TodoStatus) => {
     if (busy || status === task.status) return;
+    const prev = task.status; // 取り消し（元の状態に戻す）用に保持
+    // 変更後にこの一覧の絞り込みから外れる（＝行が消える）場合は、先に畳むアニメーションを見せる。
+    // 完了にする時／完了ページから進行中・未着手に戻す時など、いずれも下のタスクがズルッと繰り上がる。
+    const willLeave = !matchesStatusFilter(filterStatus, status);
+    if (willLeave) {
+      setBusy(true);
+      setExiting(true);
+      await new Promise((r) => setTimeout(r, 300)); // 折り畳みアニメーション時間と揃える
+      await updateDecisionTask(task.decisionId, { ...task, status }).catch(() => null);
+      // トースト＋取り消しは「完了」にした時だけ（誤完了の救済）。他の遷移は動きだけで十分。
+      if (status === 'done') {
+        showCompleteToast(task.what, () => updateDecisionTask(task.decisionId, { ...task, status: prev }));
+      }
+      setExiting(false); // フィルタ次第で残る場合（すべて表示等）は元の高さに戻す
+      setBusy(false);
+      return;
+    }
     setBusy(true);
     await updateDecisionTask(task.decisionId, { ...task, status }).catch(() => null);
     setBusy(false);
@@ -471,6 +528,8 @@ function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
   };
 
   return (
+    <div className={`grid transition-all duration-300 ease-in-out ${exiting ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr]'}`}>
+    <div className="overflow-hidden min-h-0">
     <div className={`rounded-xl border transition-all duration-200 hover:shadow-sm group ${task.status === 'done' ? 'opacity-60' : ''}`}
       style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(8px)' }}>
       <div className="flex items-start gap-3 p-4">
@@ -491,58 +550,68 @@ function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
         </button>
 
         <div className="flex-1 min-w-0">
-          <button onClick={() => setOpen((o) => { const next = !o; if (!next) { setTaskOpen(false); setEditing(false); } return next; })} className="flex flex-wrap items-center gap-2 mb-1 text-left w-full">
-            <span className={`text-sm font-medium ${task.status === 'done' ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-100'}`}>
-              {task.what}
-            </span>
-            <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-sky-50 dark:bg-sky-900/20 text-sky-600 border border-sky-200 dark:border-sky-800">
-              決定事項
-            </span>
-            {task.boardOnly && (
-              <span title="取締役＋担当部長のみに表示" className="text-xs px-2 py-0.5 rounded-full font-medium bg-rose-50 dark:bg-rose-900/20 text-rose-600 border border-rose-200 dark:border-rose-800 flex items-center gap-1">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-                取締役会限定（取締役＋担当部長のみ表示）
+          {/* タイトル＋メタ情報のどこをクリックしても展開（状態変更・編集などのボタンは別領域） */}
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => { const next = !open; setOpen(next); if (!next) setEditing(false); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const next = !open; setOpen(next); if (!next) setEditing(false); } }}
+            className="cursor-pointer rounded-lg -mx-1.5 px-1.5 py-0.5 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
+          >
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <span className={`text-sm font-medium ${task.status === 'done' ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-100'}`}>
+                {task.what}
               </span>
+              <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-sky-50 dark:bg-sky-900/20 text-sky-600 border border-sky-200 dark:border-sky-800">
+                決定事項
+              </span>
+              {task.boardOnly && (
+                <span title="取締役＋担当部長のみに表示" className="text-xs px-2 py-0.5 rounded-full font-medium bg-rose-50 dark:bg-rose-900/20 text-rose-600 border border-rose-200 dark:border-rose-800 flex items-center gap-1">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                  取締役会限定（取締役＋担当部長のみ表示）
+                </span>
+              )}
+              {task.pendingEdit && (
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">再承認待ち</span>
+              )}
+              <svg className={`w-3.5 h-3.5 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+              {task.whenDue && (
+                <span className={`flex items-center gap-1 ${isOverdue ? 'text-rose-500 font-medium' : ''}`}>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  {isOverdue && '⚠ '}{format(new Date(task.whenDue + 'T00:00:00'), 'M月d日', { locale: ja })}
+                </span>
+              )}
+              {task.who && <span>担当: {resolveMemberName(state.members, task.who)}</span>}
+              {task.departmentId && <span>部門: {getDepartmentName(task.departmentId, state.departments)}</span>}
+              {categoryLabel(task.category, state.categories) && <span className="text-violet-600">🏷 {categoryLabel(task.category, state.categories)}</span>}
+              {task.decisionCreatedBy && <span>決定作成: {resolveMemberName(state.members, task.decisionCreatedBy)}</span>}
+              {task.createdBy && <span>タスク作成: {resolveMemberName(state.members, task.createdBy)}</span>}
+            </div>
+            {((task.policies && task.policies.length > 0) || (task.projects && task.projects.length > 0)) && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {task.policies?.map((p) => <span key={p.policyId} className="text-xs px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-600">方針: {p.policy.name}</span>)}
+                {task.projects?.map((p) => <span key={p.projectId} className="text-xs px-1.5 py-0.5 rounded-full bg-sky-50 dark:bg-sky-900/20 text-sky-600">PJ: {p.project.name}</span>)}
+              </div>
             )}
-            {task.pendingEdit && (
-              <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">再承認待ち</span>
-            )}
-            <svg className={`w-3.5 h-3.5 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
+          </div>
+
           {task.pendingEdit && task.editedBy === me?.username && (
-            <div className="mb-1">
+            <div className="mb-1 mt-1.5">
               <button
                 onClick={async () => { if (busy) return; if (!confirm('この実行タスクの編集を取り消して、編集前に戻しますか？')) return; setBusy(true); await undoEditTask(task.decisionId, task.id).catch(() => null); setBusy(false); }}
                 disabled={busy}
                 className="text-xs px-2.5 py-1 rounded-lg font-medium text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
                 {busy ? '取り消し中…' : '編集を取り消す（編集前に戻す）'}
               </button>
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
-            {task.whenDue && (
-              <span className={`flex items-center gap-1 ${isOverdue ? 'text-rose-500 font-medium' : ''}`}>
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                {isOverdue && '⚠ '}{format(new Date(task.whenDue + 'T00:00:00'), 'M月d日', { locale: ja })}
-              </span>
-            )}
-            {task.who && <span>担当: {resolveMemberName(state.members, task.who)}</span>}
-            {task.departmentId && <span>部門: {getDepartmentName(task.departmentId, state.departments)}</span>}
-            {categoryLabel(task.category, state.categories) && <span className="text-violet-600">🏷 {categoryLabel(task.category, state.categories)}</span>}
-            {task.decisionCreatedBy && <span>決定作成: {resolveMemberName(state.members, task.decisionCreatedBy)}</span>}
-            {task.createdBy && <span>タスク作成: {resolveMemberName(state.members, task.createdBy)}</span>}
-          </div>
-          {((task.policies && task.policies.length > 0) || (task.projects && task.projects.length > 0)) && (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {task.policies?.map((p) => <span key={p.policyId} className="text-xs px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-600">方針: {p.policy.name}</span>)}
-              {task.projects?.map((p) => <span key={p.projectId} className="text-xs px-1.5 py-0.5 rounded-full bg-sky-50 dark:bg-sky-900/20 text-sky-600">PJ: {p.project.name}</span>)}
             </div>
           )}
 
@@ -559,36 +628,29 @@ function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
             ))}
           </div>
 
-          {/* 第1段：決定事項 */}
-          {open && (
+          {/* クリックで展開：決定事項＋5W1H（実行タスク）をまとめて表示 */}
+          {open && !editing && (
             <div className="mt-2 pt-2 border-t text-xs text-slate-500 dark:text-slate-400 space-y-1" style={{ borderColor: 'var(--border-color)' }}>
               <p>決定事項: <Link href={task.decisionArchived ? '/cancelled' : `/decisions?dec=${task.decisionId}`} className="text-indigo-500 hover:underline">{task.decisionTitle}</Link>{task.decisionArchived && <span className="ml-1 text-xs text-rose-600">🚫 中止中</span>}</p>
               {task.decisionCreatedBy && <p>決定事項作成者: {resolveMemberName(state.members, task.decisionCreatedBy)}</p>}
-              {/* 第2段トグル：5W1H（実行タスク）。決定事項は残したまま展開 */}
-              <button onClick={() => setTaskOpen((o) => !o)} className="flex items-center gap-1 text-indigo-500 hover:underline mt-1">
-                5W1H（実行タスク）を{taskOpen ? '閉じる' : '表示'}
-                <svg className={`w-3 h-3 transition-transform ${taskOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-              </button>
-              {taskOpen && !editing && (
-                <div className="mt-1 pl-3 border-l-2 space-y-1" style={{ borderColor: 'var(--border-color)' }}>
-                  <p>内容: {task.what}</p>
-                  {task.who && <p>担当（誰が）: {resolveMemberName(state.members, task.who)}</p>}
-                  {task.departmentId && <p>部門: {getDepartmentName(task.departmentId, state.departments)}</p>}
-                  {categoryLabel(task.category, state.categories) && <p>集計分類: {categoryLabel(task.category, state.categories)}</p>}
-                  {task.startDate && <p>開始日: {task.startDate}</p>}
-                  {task.whenDue && <p>完了予定日: {task.whenDue}</p>}
-                  {combineDetail(task) && <p className="whitespace-pre-wrap">目的・手法詳細: {combineDetail(task)}</p>}
-                  {(task.policies?.length ?? 0) > 0 && <p>方針: {task.policies!.map((p) => p.policy.name).join('、')}</p>}
-                  {(task.projects?.length ?? 0) > 0 && <p>プロジェクト: {task.projects!.map((p) => p.project.name).join('、')}</p>}
-                  {task.createdBy && <p>実行タスク作成者: {resolveMemberName(state.members, task.createdBy)}</p>}
-                  {canEdit
-                    ? <button onClick={startEdit} className="text-indigo-500 hover:underline mt-1">5W1H・方針・プロジェクトを編集（編集すると再承認になります）</button>
-                    : <p className="text-slate-400 mt-1">{task.decisionArchived ? '中止中のため閲覧のみ（編集不可）' : '編集は担当者・担当部長・取締役のみ可能です'}</p>}
-                </div>
-              )}
+              <div className="mt-1 pl-3 border-l-2 space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                <p>内容: {task.what}</p>
+                {task.who && <p>担当（誰が）: {resolveMemberName(state.members, task.who)}</p>}
+                {task.departmentId && <p>部門: {getDepartmentName(task.departmentId, state.departments)}</p>}
+                {categoryLabel(task.category, state.categories) && <p>集計分類: {categoryLabel(task.category, state.categories)}</p>}
+                {task.startDate && <p>開始日: {task.startDate}</p>}
+                {task.whenDue && <p>完了予定日: {task.whenDue}</p>}
+                {combineDetail(task) && <p className="whitespace-pre-wrap">目的・手法詳細: {combineDetail(task)}</p>}
+                {(task.policies?.length ?? 0) > 0 && <p>方針: {task.policies!.map((p) => p.policy.name).join('、')}</p>}
+                {(task.projects?.length ?? 0) > 0 && <p>プロジェクト: {task.projects!.map((p) => p.project.name).join('、')}</p>}
+                {task.createdBy && <p>実行タスク作成者: {resolveMemberName(state.members, task.createdBy)}</p>}
+                {canEdit
+                  ? <button onClick={startEdit} className="text-indigo-500 hover:underline mt-1">5W1H実行タスクを編集（編集すると再承認になります）</button>
+                  : <p className="text-slate-400 mt-1">{task.decisionArchived ? '中止中のため閲覧のみ（編集不可）' : '編集は担当者・担当部長・取締役のみ可能です'}</p>}
+              </div>
             </div>
           )}
-          {open && taskOpen && editing && (
+          {open && editing && (
             <div className="mt-2 pt-2 border-t space-y-2" style={{ borderColor: 'var(--border-color)' }}>
               <input className={efld} style={{ borderColor: 'var(--border-color)' }} placeholder="何を *" value={draft.what} onChange={(e) => setDraft({ ...draft, what: e.target.value })} />
               <div className="grid grid-cols-2 gap-2">
@@ -642,6 +704,8 @@ function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
         </div>
       </div>
     </div>
+    </div>
+    </div>
   );
 }
 
@@ -649,6 +713,15 @@ function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
 export default function TodosPage() {
   const { state, addTodo, updateTodo, deleteTodo, addStep, updateStep, deleteStep } = useStore();
   const currentUser = useCurrentUser();
+  // 完了トースト（✓ 〇〇 を完了にしました／取り消す）。同時に1件のみ表示し数秒で自動消灯。
+  const [completeToast, setCompleteToast] = useState<{ name: string; undo: () => void | Promise<void> } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showCompleteToast = useCallback<CompleteToast>((name, undo) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setCompleteToast({ name, undo });
+    toastTimer.current = setTimeout(() => setCompleteToast(null), 6000);
+  }, []);
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('incomplete');
   const [filterView, setFilterView] = useState<FilterView>('mine');
   const [filterType, setFilterType] = useState<FilterType>('all');
@@ -720,6 +793,13 @@ export default function TodosPage() {
         .map((t) => ({ ...t, decisionTitle: d.title, boardOnly: d.boardOnly, decisionCreatedBy: d.createdBy, decisionDepartmentId: d.departmentId, decisionArchived: d.archived }))),
     [state.decisions, view, filterView, currentUser, includeArchived]);
 
+  // 分類の絞り込みプルダウンに出す分類コード（実際に使われているもの）。
+  // 非表示にした分類は原則プルダウンから除外するが、まだその分類を持つタスクが残っている場合は
+  // 絞り込めるよう残す（「（非表示）」付き）。
+  const usedCategoryCodes = useMemo(
+    () => new Set(decisionTasks.map((t) => t.category).filter((c): c is string => !!c)),
+    [decisionTasks]);
+
   const filteredDecisionTasks = useMemo(() => {
     let tasks = [...decisionTasks];
     if (filterStatus === 'incomplete') tasks = tasks.filter((t) => t.status !== 'done');
@@ -780,10 +860,6 @@ export default function TodosPage() {
     });
     return result;
   }, [filteredTodos, filteredDecisionTasks, filterType, sortBy, quickFilter, period]);
-
-  const handleToggle = (todo: Todo) => {
-    updateTodo({ ...todo, status: todo.status === 'done' ? 'todo' : 'done' });
-  };
 
   const handleEdit = (todo: Todo) => {
     setEditTodo(todo);
@@ -849,6 +925,7 @@ export default function TodosPage() {
   }, [state.todos, decisionTasks, filterType, filterView, currentUser]);
 
   return (
+    <CompleteToastContext.Provider value={showCompleteToast}>
     <div className="p-4 sm:p-6 lg:p-8 space-y-5 min-h-full">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -944,7 +1021,9 @@ export default function TodosPage() {
           >
             <option value="all">分類: すべて</option>
             <option value="">分類: 未設定</option>
-            {[...state.categories].sort((a, b) => a.sortOrder - b.sortOrder).map((c) => (
+            {[...state.categories]
+              .filter((c) => c.active || usedCategoryCodes.has(c.code) || c.code === categoryFilter)
+              .sort((a, b) => a.sortOrder - b.sortOrder).map((c) => (
               <option key={c.code} value={c.code}>分類: {c.label}{c.active ? '' : '（非表示）'}</option>
             ))}
           </select>
@@ -987,11 +1066,11 @@ export default function TodosPage() {
                 todo={c.todo!}
                 onEdit={handleEdit}
                 onDelete={deleteTodo}
-                onToggle={handleToggle}
+                filterStatus={filterStatus}
                 currentUsername={currentUser?.username ?? null}
               />
             ) : (
-              <DecisionTaskItem key={c.key} task={c.task!} />
+              <DecisionTaskItem key={c.key} task={c.task!} filterStatus={filterStatus} />
             ))}
           </>
         )}
@@ -1004,7 +1083,38 @@ export default function TodosPage() {
           onClose={() => { setShowForm(false); setEditTodo(null); }}
         />
       )}
+
+      {/* 完了トースト：完了を押したことが分かるよう表示。取り消しで元に戻せる。 */}
+      {completeToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg bg-slate-800 text-white text-sm max-w-[90vw]">
+          <svg className="w-5 h-5 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+          </svg>
+          <span className="min-w-0 truncate">「{completeToast.name}」を完了にしました</span>
+          <button
+            onClick={() => {
+              if (toastTimer.current) clearTimeout(toastTimer.current);
+              const u = completeToast.undo;
+              setCompleteToast(null);
+              Promise.resolve(u()).catch(() => {});
+            }}
+            className="flex-shrink-0 px-3 py-1 rounded-lg bg-white/15 hover:bg-white/25 font-medium transition-colors"
+          >
+            取り消す
+          </button>
+          <button
+            onClick={() => { if (toastTimer.current) clearTimeout(toastTimer.current); setCompleteToast(null); }}
+            aria-label="閉じる"
+            className="flex-shrink-0 text-white/60 hover:text-white transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
     </div>
+    </CompleteToastContext.Provider>
   );
 }
 

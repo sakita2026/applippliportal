@@ -25,6 +25,55 @@ const STATUS_BADGE: Record<DecisionStatus, string> = {
   done: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800',
 };
 
+// 目的・詳細等の本文。5行を超える場合は5行までに省略し、末尾に「・・・・・・」を出して
+// 続きがあることを示す。本文（または・・・・・・）をクリックすると全文を表示、再クリックで折りたたむ。
+const DESC_MAX_LINES = 5;
+function DescriptionText({ text }: { text: string }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
+  const [maxH, setMaxH] = useState<number | null>(null);
+
+  useEffect(() => {
+    const measure = () => {
+      const el = ref.current;
+      if (!el) return;
+      const lh = parseFloat(getComputedStyle(el).lineHeight) || 20; // 1行の高さ(px)
+      const limit = lh * DESC_MAX_LINES;
+      setMaxH(limit);
+      // scrollHeight は max-height でクリップしても全文の高さを返すので、10行超えを判定できる
+      setOverflowing(el.scrollHeight > limit + 1);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [text]);
+
+  const clamp = overflowing && !expanded;
+  return (
+    <div className="mt-1.5">
+      <p
+        ref={ref}
+        onClick={overflowing ? () => setExpanded((e) => !e) : undefined}
+        className={`text-sm text-slate-500 dark:text-slate-400 whitespace-pre-wrap ${overflowing ? 'cursor-pointer' : ''}`}
+        style={clamp && maxH != null ? { maxHeight: maxH, overflow: 'hidden' } : undefined}
+        title={overflowing ? (expanded ? 'クリックで折りたたむ' : 'クリックで全文表示') : undefined}
+      >
+        {text}
+      </p>
+      {overflowing && (
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="mt-0.5 text-sm font-bold text-slate-400 hover:text-indigo-500 transition-colors select-none"
+        >
+          {expanded ? '▲ 閉じる' : '・・・・・・（クリックで全文表示）'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // 5W1H タスクの下書き型
 type DraftTask = {
   what: string;
@@ -43,7 +92,7 @@ const emptyTask = (): DraftTask => ({
 });
 
 // ── 決定事項 作成フォーム ──────────────────────────────────────────────────────
-function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Decision }) {
+function DecisionForm({ onClose, initial }: { onClose: (savedId?: string) => void; initial?: Decision }) {
   const { addDecision, updateDecision, state } = useStore();
   const isEdit = !!initial;
   const [title, setTitle] = useState(initial?.title ?? '');
@@ -61,7 +110,6 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
   const [segment, setSegment] = useState(initial?.segment ?? '');
   const [startDate, setStartDate] = useState(initial?.startDate ?? '');
   const [dueDate, setDueDate] = useState(initial?.dueDate ?? '');
-  const [editReason, setEditReason] = useState('');
   const [editingExistingId, setEditingExistingId] = useState<string | null>(null);
   const me = useCurrentUser();
   const isBoard = !!me && (!!me.isDirector || !!me.isRepresentative || !!me.isAdvisor || !!me.isAuditor);
@@ -106,6 +154,7 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
     if (!title.trim() || saving) return;
     setSaving(true);
     try {
+      let savedId: string | undefined;
       if (isEdit && initial) {
         const newTasks = tasks.filter((t) => t.what.trim()).map((t) => ({
           what: t.what.trim(), why: t.why.trim() || undefined, who: t.who || undefined,
@@ -123,11 +172,11 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
           segment: segment || null,
           startDate: startDate || null,
           dueDate: dueDate || null,
-          editReason: editReason.trim() || undefined,
           newTasks,
         });
+        savedId = initial.id;
       } else {
-        await addDecision({
+        const created = await addDecision({
           title: title.trim(),
           description: description.trim() || undefined,
           tasks: tasks
@@ -152,8 +201,9 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
           startDate: startDate || undefined,
           dueDate: dueDate || undefined,
         });
+        savedId = created?.id;
       }
-      onClose();
+      onClose(savedId);
     } catch {
       setSaving(false);
     }
@@ -163,18 +213,12 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
 
   return (
     <div className="w-full rounded-2xl border p-6" style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
-        <button type="button" onClick={onClose} className="mb-3 inline-flex items-center gap-1 text-sm text-indigo-500 hover:text-indigo-600">
+        <button type="button" onClick={() => onClose()} className="mb-3 inline-flex items-center gap-1 text-sm text-indigo-500 hover:text-indigo-600">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
           一覧に戻る
         </button>
         <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4">{isEdit ? '決定事項を編集' : '新しい決定事項'}</h2>
-        {isEdit && <p className="text-xs text-amber-500 -mt-3 mb-3">編集すると承認はリセットされ、再承認が必要になります（タスクの編集は各タスクから行います）。</p>}
-        {isEdit && (
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">変更理由（承認者に表示・任意）</label>
-            <input value={editReason} onChange={(e) => setEditReason(e.target.value)} placeholder="例: 期限の記載を修正" className={fieldCls} style={{ borderColor: 'var(--border-color)' }} />
-          </div>
-        )}
+        {isEdit && <p className="text-xs text-rose-600 dark:text-rose-400 font-medium -mt-3 mb-3">編集すると承認はリセットされ、再承認が必要になります（タスクの編集は各タスクから行います）。</p>}
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* 取締役会限定（先頭） */}
           {isBoard && (
@@ -374,7 +418,7 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
           </div>
 
           <div className="flex gap-2 pt-2">
-            <button type="button" onClick={onClose}
+            <button type="button" onClick={() => onClose()}
               className="flex-1 py-2.5 rounded-xl text-sm font-medium border text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
               style={{ borderColor: 'var(--border-color)' }}>
               キャンセル
@@ -491,7 +535,7 @@ function InlineTaskEditor({ task, onClose, onSaved }: { task: DecisionTask & { d
       )}
       <div className="flex gap-2">
         <button onClick={save} disabled={busy} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-500 text-white disabled:opacity-60">{busy ? '保存中…' : '保存（再承認へ）'}</button>
-        <button onClick={onClose} disabled={busy} className="px-3 py-1.5 rounded-lg text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">取消</button>
+        <button onClick={() => { onClose(); onSaved?.(task.decisionId); }} disabled={busy} className="px-3 py-1.5 rounded-lg text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">取消</button>
       </div>
     </div>
   );
@@ -591,7 +635,7 @@ function InlineTaskCreator({ decisionId, onClose, requireApproval = false, onSav
       )}
       <div className="flex gap-2">
         <button onClick={save} disabled={busy} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-500 text-white disabled:opacity-60">{busy ? '追加中…' : (requireApproval ? '追加する（再承認へ）' : '追加する')}</button>
-        <button onClick={onClose} disabled={busy} className="px-3 py-1.5 rounded-lg text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">取消</button>
+        <button onClick={() => { onClose(); onSaved?.(decisionId); }} disabled={busy} className="px-3 py-1.5 rounded-lg text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">取消</button>
       </div>
     </div>
   );
@@ -719,7 +763,7 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId, onReveal }: 
             )}
           </div>
           {decision.description && (
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1.5 whitespace-pre-wrap">{decision.description}</p>
+            <DescriptionText text={decision.description} />
           )}
           {((decision.policies && decision.policies.length > 0) || (decision.projects && decision.projects.length > 0)) && (
             <div className="flex flex-wrap gap-1.5 mt-2">
@@ -822,8 +866,8 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId, onReveal }: 
       {total > 0 && (
         <div className="mt-3">
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
-            <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-1 hover:text-indigo-500 transition-colors">
-              <svg className={`w-3 h-3 transition-transform ${open ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-1 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 hover:underline transition-colors">
+              <svg className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
               タスク {doneCount}/{total} 完了
@@ -1009,7 +1053,18 @@ export default function DecisionsPage() {
   if (showForm || editDecision) {
     return (
       <div className="p-4 sm:p-6 lg:p-8 min-h-full">
-        <DecisionForm key={editDecision?.id ?? 'new'} initial={editDecision ?? undefined} onClose={() => { setShowForm(false); setEditDecision(null); }} />
+        <DecisionForm
+          key={editDecision?.id ?? 'new'}
+          initial={editDecision ?? undefined}
+          onClose={(savedId) => {
+            // 保存した決定（編集はその決定、新規は作成された決定）へ戻る。
+            // キャンセル時は savedId 無し→編集中だった決定へ戻る（新規作成のキャンセルは一覧先頭へ）。
+            const revealId = savedId ?? editDecision?.id ?? null;
+            setShowForm(false);
+            setEditDecision(null);
+            if (revealId) reveal(revealId);
+          }}
+        />
       </div>
     );
   }
