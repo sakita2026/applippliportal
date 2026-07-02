@@ -745,8 +745,9 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId, onReveal }: 
 
   return (
     <div ref={cardRef} className="rounded-2xl border p-4 sm:p-5 scroll-mt-24 transition-shadow" style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
-      {/* ①状態マーク＋区分バッジ */}
-      <div className="flex items-center gap-2 flex-wrap">
+      {/* ①状態マーク＋区分バッジ ／ ②操作ボタン。スマホ=別行で右揃え、PC=同じ行の右側に右揃え */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
         <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${STATUS_BADGE[decision.status]}`}>
           {DECISION_STATUS_LABELS[decision.status]}
         </span>
@@ -761,8 +762,8 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId, onReveal }: 
         )}
       </div>
 
-      {/* ②操作ボタン（承認待ちマークの下・タイトルの上）。PC/スマホ共通で横並び・折り返し。ボタンが無ければ非表示 */}
-      <div className="flex items-center gap-1 flex-wrap mt-2 empty:hidden">
+        {/* ②操作ボタン（右揃え）。ボタンが無ければ非表示 */}
+        <div className="flex items-center gap-1 flex-wrap justify-end empty:hidden">
         {canApproveThis && !decision.deleteRequested && (
           <button onClick={handleApprove} disabled={busy}
             className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-500 text-white hover:bg-indigo-600 transition-colors disabled:opacity-60">
@@ -812,6 +813,7 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId, onReveal }: 
           <button onClick={handleRequestDelete} disabled={busy}
             className="px-2 py-1 rounded-lg text-xs font-medium text-rose-500 border border-rose-200 dark:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors" title="中止を申請">中止</button>
         )}
+        </div>
       </div>
 
       {/* ③タイトル */}
