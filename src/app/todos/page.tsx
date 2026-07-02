@@ -461,6 +461,7 @@ function DecisionTaskItem({ task }: { task: ActiveDecisionTask }) {
         projectIds: selProjects, policyIds: selPolicies,
       } as DecisionTask & { projectIds: string[]; policyIds: string[] });
       setEditing(false);
+      // 実行タスクページに留まる（編集者には pendingEdit のタスクが引き続き表示される）
     } catch {
       // 失敗を握りつぶさず明示（再承認にならない等の無言失敗を防ぐ）
       setEditErr('保存に失敗しました。時間をおいて再度お試しください（変更は反映されていません）。');

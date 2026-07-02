@@ -2,10 +2,10 @@
 
 import { useEffect } from 'react';
 
-// アイドルタイムアウト（無操作）= 300分。サーバー側のセッション失効と揃える。
+// アイドルタイムアウト（無操作）= 120分。サーバー側のセッション失効と揃える。
 // タブを開いたまま放置（バックグラウンドのポーリングはあっても人の操作が無い）状態が
-// 300分続いたら、確実にログアウト（/api/auth/logout でCookie破棄＋orgportalシングルログアウト）。
-const IDLE_MS = 300 * 60 * 1000;      // 無操作300分でログアウト
+// 120分続いたら、確実にログアウト（/api/auth/logout でCookie破棄＋orgportalシングルログアウト）。
+const IDLE_MS = 120 * 60 * 1000;      // 無操作120分でログアウト
 const HEARTBEAT_MS = 4 * 60 * 1000;   // 操作中は最大4分ごとにセッションを延長（API応答では延長されないため）
 
 export function IdleLogout() {

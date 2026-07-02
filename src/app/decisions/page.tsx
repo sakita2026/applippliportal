@@ -390,7 +390,7 @@ function DecisionForm({ onClose, initial }: { onClose: () => void; initial?: Dec
 }
 
 // ── 実行タスク インライン編集（5W1H・方針・プロジェクト） ───────────────────────
-function InlineTaskEditor({ task, onClose }: { task: DecisionTask & { decisionId: string }; onClose: () => void }) {
+function InlineTaskEditor({ task, onClose, onSaved }: { task: DecisionTask & { decisionId: string }; onClose: () => void; onSaved?: (decisionId: string) => void }) {
   const { editDecisionTask, state } = useStore();
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState({
@@ -442,6 +442,7 @@ function InlineTaskEditor({ task, onClose }: { task: DecisionTask & { decisionId
     } as DecisionTask & { projectIds: string[]; policyIds: string[] }).catch(() => null);
     setBusy(false);
     onClose();
+    onSaved?.(task.decisionId); // 編集後、その決定事項を画面に表示（再承認待ちが見えるように）
   };
 
   return (
@@ -498,7 +499,7 @@ function InlineTaskEditor({ task, onClose }: { task: DecisionTask & { decisionId
 
 // ── 実行タスク インライン追加（既存の決定事項に後から追加） ───────────────
 // requireApproval: 決定事項から追加するときは再承認が必要（追加タスクは承認まで非表示）。
-function InlineTaskCreator({ decisionId, onClose, requireApproval = false }: { decisionId: string; onClose: () => void; requireApproval?: boolean }) {
+function InlineTaskCreator({ decisionId, onClose, requireApproval = false, onSaved }: { decisionId: string; onClose: () => void; requireApproval?: boolean; onSaved?: (decisionId: string) => void }) {
   const { addDecisionTask, state } = useStore();
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState({ what: '', why: '', who: '', whereLoc: '', whenDue: '', how: '', departmentId: '', category: '', startDate: '' });
@@ -541,6 +542,7 @@ function InlineTaskCreator({ decisionId, onClose, requireApproval = false }: { d
     }, requireApproval).catch(() => null);
     setBusy(false);
     onClose();
+    onSaved?.(decisionId); // 追加後、その決定事項を画面に表示（再承認待ちが見えるように）
   };
   return (
     <div className="mt-2 space-y-2 rounded-lg border p-2.5" style={{ borderColor: 'var(--border-color)', background: 'var(--glass-bg)' }}>
@@ -596,7 +598,7 @@ function InlineTaskCreator({ decisionId, onClose, requireApproval = false }: { d
 }
 
 // ── 決定事項 カード ───────────────────────────────────────────────────────────
-function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId }: { decision: Decision; isAdmin: boolean; onEdit: (d: Decision) => void; autoOpen?: boolean; autoEditTaskId?: string | null }) {
+function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId, onReveal }: { decision: Decision; isAdmin: boolean; onEdit: (d: Decision) => void; autoOpen?: boolean; autoEditTaskId?: string | null; onReveal?: (id: string) => void }) {
   const { approveDecision, completeDecision, undoApproveDecision, undoEditDecision, requestDeleteDecision, cancelDeleteDecision, state } = useStore();
   const me = useCurrentUser();
   const cardRef = useRef<HTMLDivElement>(null);
@@ -877,7 +879,7 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId }: { decision
                 )}
               </div>
               {editingTaskId === t.id ? (
-                <InlineTaskEditor task={{ ...t, decisionId: decision.id }} onClose={() => setEditingTaskId(null)} />
+                <InlineTaskEditor task={{ ...t, decisionId: decision.id }} onClose={() => setEditingTaskId(null)} onSaved={onReveal} />
               ) : expandedTaskId === t.id && (
                 <div className="pl-4 mt-1 grid grid-cols-[5.5rem_1fr] gap-x-2 gap-y-0.5 text-xs">
                   <span className="text-slate-400">内容</span><span className="text-slate-700 dark:text-slate-200 break-words">{t.what}</span>
@@ -902,7 +904,7 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId }: { decision
       {me && (me.position === 'manager' || me.isDirector || me.isRepresentative || me.role === 'admin') && !decision.deleteRequested && (
         <div className="mt-3">
           {addingTask ? (
-            <InlineTaskCreator decisionId={decision.id} requireApproval onClose={() => setAddingTask(false)} />
+            <InlineTaskCreator decisionId={decision.id} requireApproval onClose={() => setAddingTask(false)} onSaved={onReveal} />
           ) : (
             <button onClick={() => setAddingTask(true)}
               className="flex items-center gap-1.5 text-xs font-medium text-indigo-500 hover:text-indigo-700 transition-colors">
@@ -955,6 +957,15 @@ export default function DecisionsPage() {
   useEffect(() => {
     if (!viewInit && currentUser) { setView(defaultView(currentUser)); setViewInit(true); }
   }, [currentUser, viewInit]);
+
+  // 実行タスクの追加/編集後、その決定事項を画面に表示（フィルタを外して該当カードへスクロール＋強調）。
+  const reveal = useCallback((decisionId: string) => {
+    setAutoTask(null);
+    setAutoDec(decisionId);
+    setFilter('all');
+    setView('all');
+    setViewInit(true);
+  }, []);
 
   const matchesScope = useCallback((d: Decision) => decisionVisible(d, view, currentUser), [view, currentUser]);
 
@@ -1076,7 +1087,7 @@ export default function DecisionsPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {filtered.map((d) => <DecisionCard key={d.id} decision={d} isAdmin={isAdmin} onEdit={setEditDecision} autoOpen={d.id === autoDec} autoEditTaskId={d.id === autoDec ? autoTask : null} />)}
+          {filtered.map((d) => <DecisionCard key={d.id} decision={d} isAdmin={isAdmin} onEdit={setEditDecision} autoOpen={d.id === autoDec} autoEditTaskId={d.id === autoDec ? autoTask : null} onReveal={reveal} />)}
         </div>
       )}
     </div>

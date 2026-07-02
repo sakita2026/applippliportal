@@ -16,10 +16,10 @@
 - 表示用に `workportal_user`（ユーザー名・非httpOnly）を別途保持。**認証には使わない（信頼しない）**。
 - middleware が署名・有効期限を検証。未認証は **ページ＝SSOへリダイレクト／API＝401**。
 - 検証済みユーザー名のみ信頼ヘッダ `x-wp-user` で下流へ。クライアント偽装ヘッダは除去。
-- ログインは orgportal SSO 経由。**アイドルタイムアウト＝無操作300分でログオフ**：
-  - workportal セッション（`workportal_auth`）は **maxAge=300分** で、middleware が操作のたびにトークン/Cookieを再発行して**スライド延長**。操作が止まれば（タブを閉じる/放置）最後の操作から300分で失効。
-  - orgportal `orgportal_session` も **300分**（ログインから）。workportal失効時に「無言の自動再ログイン」にならないよう同調。
-  - 開いたまま放置（バックグラウンドのポーリングで延長され続けるケース）対策として、**クライアント常駐の無操作監視（[IdleLogout]・人の操作が300分無ければ `/api/auth/logout`）**を併用。
+- ログインは orgportal SSO 経由。**アイドルタイムアウト＝無操作120分でログオフ**：
+  - workportal セッション（`workportal_auth`）は **maxAge=120分** で、middleware が操作のたびにトークン/Cookieを再発行して**スライド延長**。操作が止まれば（タブを閉じる/放置）最後の操作から120分で失効。
+  - orgportal `orgportal_session` も **120分**（ログインから）。workportal失効時に「無言の自動再ログイン」にならないよう同調。
+  - 開いたまま放置（バックグラウンドのポーリングで延長され続けるケース）対策として、**クライアント常駐の無操作監視（[IdleLogout]・人の操作が120分無ければ `/api/auth/logout`）**を併用。
   - 確実なログアウトはアプリのログアウトボタン（サーバーでCookie破棄＋orgportalシングルログアウト・ブラウザ非依存）。
 - ログアウトは `/api/auth/logout`（両Cookie破棄＋orgportalシングルログアウト）→ `/login`。
 
@@ -266,6 +266,7 @@
 - 2026-06-30: タグ選択を**プロジェクト→方針の順**にし、**プロジェクト選択で紐づく方針を自動チェック／解除で自動オフ**（他の選択中PJが同方針を持つ場合は維持）。§4 に追記。
 - 2026-06-30: **「全員通達一覧」(/notices) 新設**＋サイドメニュー追加。全社通達を期限切れ・完了後も恒久表示（全員閲覧可）。全員通達バッジを赤系(rose)に統一（/decisions も）。§5D 新設・§8 関連。
 - 2026-06-30: **アイドルタイムアウト300分に変更**（旧「ブラウザ閉じ＝即セッションCookie失効」を置換）。workportal=maxAge300分＋middlewareでスライド延長、orgportal=300分（ログインから）、開きっぱなし対策にクライアント無操作監視(IdleLogout)を併用。無操作300分でログオフ。§1更新。
+- 2026-07-02: **アイドルタイムアウトを300分→120分に短縮**。workportal(SESSION_TTL_SEC)・orgportal(SESSION_TTL_MS)・クライアント無操作監視(IdleLogout IDLE_MS) をいずれも120分に統一。ヘルプ表記も「無操作2時間」に更新。§1更新。
 - 2026-06-30: **#10（ログインCSRF state）を撤去**。メールリンク経由ログイン（別ブラウザ/メールアプリ内ブラウザで開く）・複数タブ同時起動で `wp_sso_state` Cookie が不在/上書きとなり、正規ログインが「認証エラー(bad_state)」で弾かれる事象が多発したため。SSOトークンの署名・issuer/audience・有効期限(10分)検証で正当性を担保。複数タブ運用と両立。※ログインCSRF（中程度・社内ツール前提）は受容。確実なログアウトはアプリのログアウトボタン（サーバーでCookie破棄）。
 - 2026-06-30: **セキュリティ修正(#10 ログインCSRF)**：SSOログインに **state ノンス**を導入。middleware が `state` を発行し `wp_sso_state` Cookie(httpOnly/30分/単回)に保存＋`/authorize` へ渡す → orgportal が `state` をコールバックへ素通し → workportal コールバックが Cookie と照合し不一致なら `bad_state` で拒否。攻撃者が用意したトークンでの強制ログインを防止。E2E検証済（無Cookie/不一致→bad_state、一致+正規トークン→/dashboard、エラー経路はstate不要）。
 - 2026-06-30: **セキュリティ修正(B 続き・身分一本化 8a)**：`isAdminUser` を**orgportal ディレクトリ基準に統一**（role==='admin' ＝ isSuperAdmin。ローカル `prisma.member` の影の台帳に依存しない・取得失敗時 fail-closed）。WorkPortal の `/api/members/[id]` PUT/DELETE を**410化**（メンバー管理は orgportal に一本化＝権限昇格・二重管理を解消）。E2E検証済（admin維持/非admin403/編集410）。

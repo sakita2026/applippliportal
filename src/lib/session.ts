@@ -4,9 +4,9 @@ import { SignJWT, jwtVerify } from 'jose';
 // 平文ユーザー名のCookieはなりすまし可能なため、署名して中身の改ざんを検知する。
 const secretKey = () => new TextEncoder().encode(process.env.SESSION_SECRET ?? '');
 
-// アイドルタイムアウト（無操作）= 300分。最後の操作から this 秒で失効。
+// アイドルタイムアウト（無操作）= 120分。最後の操作から this 秒で失効。
 // middleware が操作のたびにトークン/Cookie を再発行してスライド（延長）する。
-export const SESSION_TTL_SEC = 300 * 60;
+export const SESSION_TTL_SEC = 120 * 60;
 
 export type Session = { username: string; name: string };
 

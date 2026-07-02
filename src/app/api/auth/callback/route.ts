@@ -31,8 +31,8 @@ export async function GET(req: NextRequest) {
   const session = await signSession({ username: payload.username, name: payload.name });
   // 本番(HTTPS)では secure を付与。ローカル開発(http)では false にして送信できるようにする。
   const secure = process.env.NODE_ENV === 'production';
-  // アイドルタイムアウト(300分)。maxAge を付与し、以後 middleware が操作のたびにスライド更新する。
-  // 操作が止まれば（タブを閉じる/放置）最後の操作から300分で失効＝再ログイン。
+  // アイドルタイムアウト(120分)。maxAge を付与し、以後 middleware が操作のたびにスライド更新する。
+  // 操作が止まれば（タブを閉じる/放置）最後の操作から120分で失効＝再ログイン。
   res.cookies.set('workportal_auth', session, {
     path: '/', maxAge: SESSION_TTL_SEC, sameSite: 'lax', httpOnly: true, secure,
   });
