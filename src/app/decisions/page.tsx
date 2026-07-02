@@ -745,7 +745,7 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId, onReveal }: 
 
   return (
     <div ref={cardRef} className="rounded-2xl border p-4 sm:p-5 scroll-mt-24 transition-shadow" style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${STATUS_BADGE[decision.status]}`}>
@@ -809,7 +809,7 @@ function DecisionCard({ decision, onEdit, autoOpen, autoEditTaskId, onReveal }: 
             <div className="mt-1.5"><EditDiff note={decision.editNote} /></div>
           )}
         </div>
-        <div className="flex items-center gap-1 flex-shrink-0">
+        <div className="flex items-center gap-1 flex-shrink-0 flex-wrap">
           {canApproveThis && !decision.deleteRequested && (
             <button onClick={handleApprove} disabled={busy}
               className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-500 text-white hover:bg-indigo-600 transition-colors disabled:opacity-60">
